@@ -27,6 +27,8 @@ Dashboard with **ChartDonut** cards (CSV phase, upgrades, governance, policy ref
 OLM subscriptions per cluster, CSV phase, OperatorPolicy reference (with **External** when not created from this plugin).
 
 ![Managed cluster operators: table with namespaces, subscriptions, OperatorPolicy, CSV](docs/images/installed-operators.png)
+<img width="1512" height="830" alt="image" src="https://github.com/user-attachments/assets/dc74c575-78de-4769-b25c-02697d9f3736" />
+
 
 ### Install operators
 
