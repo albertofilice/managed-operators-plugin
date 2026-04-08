@@ -3,6 +3,11 @@ import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
 import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
 import { clusterApiPath } from '../utils/clusterApi';
+import {
+  cachedConsoleFetchJson,
+  MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+  operatorPolicyGetCacheKey,
+} from '../utils/managedOperatorsGetCache';
 import { listOperatorPoliciesForCluster } from '../utils/listOperatorPolicies';
 import type { OperatorRow } from './useManagedClusterSubscriptions';
 
@@ -19,7 +24,11 @@ function refKey(r: OperatorRow): string | null {
  * the list (other namespaces / RBAC). Used to show "Edit policy" only when editable from this console.
  * Policies without the annotation (hub Policy, YAML, GitOps, etc.) are "external" for this UI.
  */
-export function usePluginPolicyEditableMap(rows: OperatorRow[]): {
+export function usePluginPolicyEditableMap(
+  rows: OperatorRow[],
+  /** Bump when subscriptions are explicitly refreshed so policy list / GET cache misses. */
+  policyListCacheScope = 0,
+): {
   loading: boolean;
   canEditPlugin: (r: OperatorRow) => boolean;
   /** OperatorPolicy exists on cluster but was not created from this plugin (e.g. hub `Policy` → reconciled OperatorPolicy). */
@@ -63,7 +72,9 @@ export function usePluginPolicyEditableMap(rows: OperatorRow[]): {
 
       await Promise.all(
         [...clusterKeys].map(async (clusterKey) => {
-          const policies = await listOperatorPoliciesForCluster(clusterKey);
+          const policies = await listOperatorPoliciesForCluster(clusterKey, {
+            listScope: policyListCacheScope,
+          });
           const byNsName = new Map<string, OperatorPolicyKind>();
           for (const p of policies) {
             const ns = p.metadata?.namespace;
@@ -88,7 +99,11 @@ export function usePluginPolicyEditableMap(rows: OperatorRow[]): {
 
               try {
                 const url = clusterApiPath(clusterKey, policyPath(namespace, name));
-                const policy = (await consoleFetchJSON(url, 'GET')) as OperatorPolicyKind;
+                const policy = await cachedConsoleFetchJson(
+                  operatorPolicyGetCacheKey(policyListCacheScope, url),
+                  MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+                  () => consoleFetchJSON(url, 'GET') as Promise<OperatorPolicyKind>,
+                );
                 next[line] = isPluginCreated(policy);
               } catch {
                 next[line] = false;
@@ -107,7 +122,7 @@ export function usePluginPolicyEditableMap(rows: OperatorRow[]): {
     return () => {
       cancelled = true;
     };
-  }, [serialized]);
+  }, [serialized, policyListCacheScope]);
 
   const canEditPlugin = React.useCallback(
     (r: OperatorRow) => {

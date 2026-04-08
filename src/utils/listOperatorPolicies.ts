@@ -1,16 +1,45 @@
 import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
 import type { OperatorPolicyKind, OperatorPolicyList } from '../types/operatorPolicy';
 import { clusterApiPath } from './clusterApi';
+import {
+  cachedConsoleFetchJson,
+  MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+  operatorPolicyListCacheKey,
+} from './managedOperatorsGetCache';
 
 const GROUP = '/apis/policy.open-cluster-management.io/v1beta1';
 
+export type ListOperatorPoliciesOptions = {
+  /** Invalidate cache when subscriptions refresh (e.g. Installed Operators page). */
+  listScope?: number;
+  bypassCache?: boolean;
+};
+
+async function fetchPolicyList(
+  clusterKey: string,
+  apiPath: string,
+  listScope: number,
+  bypassCache: boolean,
+): Promise<OperatorPolicyList> {
+  const url = clusterApiPath(clusterKey, apiPath);
+  return cachedConsoleFetchJson(
+    operatorPolicyListCacheKey(listScope, url),
+    MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+    () => consoleFetchJSON(url, 'GET') as Promise<OperatorPolicyList>,
+    { bypassCache },
+  );
+}
+
 /** List OperatorPolicies on the managed cluster (cluster-wide list first, then known namespaces). */
-export async function listOperatorPoliciesForCluster(clusterKey: string): Promise<OperatorPolicyKind[]> {
+export async function listOperatorPoliciesForCluster(
+  clusterKey: string,
+  options?: ListOperatorPoliciesOptions,
+): Promise<OperatorPolicyKind[]> {
+  const listScope = options?.listScope ?? 0;
+  const bypassCache = options?.bypassCache ?? false;
+
   try {
-    const list = (await consoleFetchJSON(
-      clusterApiPath(clusterKey, `${GROUP}/operatorpolicies`),
-      'GET',
-    )) as OperatorPolicyList;
+    const list = await fetchPolicyList(clusterKey, `${GROUP}/operatorpolicies`, listScope, bypassCache);
     if (list.items?.length) {
       return dedupeByUid(list.items);
     }
@@ -31,10 +60,12 @@ export async function listOperatorPoliciesForCluster(clusterKey: string): Promis
   const merged: OperatorPolicyKind[] = [];
   for (const ns of namespaces) {
     try {
-      const list = (await consoleFetchJSON(
-        clusterApiPath(clusterKey, `${GROUP}/namespaces/${encodeURIComponent(ns)}/operatorpolicies`),
-        'GET',
-      )) as OperatorPolicyList;
+      const list = await fetchPolicyList(
+        clusterKey,
+        `${GROUP}/namespaces/${encodeURIComponent(ns)}/operatorpolicies`,
+        listScope,
+        bypassCache,
+      );
       merged.push(...(list.items ?? []));
     } catch {
       /* missing namespace or RBAC */

@@ -182,7 +182,7 @@ const InstallOperatorsPage: React.FC = () => {
   const refetchPolicies = React.useCallback(async () => {
     if (!selectedCluster) return;
     try {
-      const items = await listOperatorPoliciesForCluster(selectedCluster);
+      const items = await listOperatorPoliciesForCluster(selectedCluster, { bypassCache: true });
       setClusterPolicies(items);
     } catch {
       // ignore

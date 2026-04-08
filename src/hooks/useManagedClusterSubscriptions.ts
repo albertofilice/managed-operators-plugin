@@ -3,6 +3,11 @@ import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
 import type { ClusterServiceVersionKind, InstallPlanKind, InstallPlanList } from '../types/olm';
 import type { SubscriptionKind, SubscriptionList } from '../types/subscription';
 import { clusterApiPath, HUB_SUBSCRIPTIONS_PATH } from '../utils/clusterApi';
+import {
+  cachedConsoleFetchJson,
+  MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+  subscriptionGetCacheKey,
+} from '../utils/managedOperatorsGetCache';
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import {
   OP_POLICY_MANAGED_ANNOTATION,
@@ -80,23 +85,41 @@ export function csvNameToVersion(csv?: string): string {
   return parts.slice(1).join('.');
 }
 
-async function fetchSubscriptionsForCluster(clusterName: string): Promise<SubscriptionKind[]> {
+async function fetchSubscriptionsForCluster(
+  clusterName: string,
+  refreshEpoch: number,
+): Promise<SubscriptionKind[]> {
   if (clusterName === '__hub_direct__') {
-    const list = (await consoleFetchJSON(HUB_SUBSCRIPTIONS_PATH, 'GET')) as SubscriptionList;
+    const list = await cachedConsoleFetchJson(
+      subscriptionGetCacheKey(refreshEpoch, HUB_SUBSCRIPTIONS_PATH),
+      MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+      () => consoleFetchJSON(HUB_SUBSCRIPTIONS_PATH, 'GET') as Promise<SubscriptionList>,
+    );
     return list.items ?? [];
   }
   const path = clusterApiPath(
     clusterName,
     '/apis/operators.coreos.com/v1alpha1/subscriptions',
   );
-  const list = (await consoleFetchJSON(path, 'GET')) as SubscriptionList;
+  const list = await cachedConsoleFetchJson(
+    subscriptionGetCacheKey(refreshEpoch, path),
+    MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+    () => consoleFetchJSON(path, 'GET') as Promise<SubscriptionList>,
+  );
   return list.items ?? [];
 }
 
-async function fetchInstallPlansForCluster(clusterKey: string): Promise<InstallPlanKind[]> {
+async function fetchInstallPlansForCluster(
+  clusterKey: string,
+  refreshEpoch: number,
+): Promise<InstallPlanKind[]> {
   try {
     const path = clusterApiPath(clusterKey, '/apis/operators.coreos.com/v1alpha1/installplans');
-    const list = (await consoleFetchJSON(path, 'GET')) as InstallPlanList;
+    const list = await cachedConsoleFetchJson(
+      subscriptionGetCacheKey(refreshEpoch, path),
+      MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+      () => consoleFetchJSON(path, 'GET') as Promise<InstallPlanList>,
+    );
     return list.items ?? [];
   } catch {
     return [];
@@ -107,13 +130,18 @@ async function fetchCsv(
   clusterKey: string,
   namespace: string,
   csvName: string,
+  refreshEpoch: number,
 ): Promise<ClusterServiceVersionKind | null> {
   try {
     const path = clusterApiPath(
       clusterKey,
       `/apis/operators.coreos.com/v1alpha1/namespaces/${encodeURIComponent(namespace)}/clusterserviceversions/${encodeURIComponent(csvName)}`,
     );
-    return (await consoleFetchJSON(path, 'GET')) as ClusterServiceVersionKind;
+    return await cachedConsoleFetchJson(
+      subscriptionGetCacheKey(refreshEpoch, path),
+      MANAGED_OPERATORS_GET_CACHE_TTL_MS,
+      () => consoleFetchJSON(path, 'GET') as Promise<ClusterServiceVersionKind>,
+    );
   } catch {
     return null;
   }
@@ -170,8 +198,11 @@ async function enrichSubscriptionsForCluster(
   clusterKey: string,
   displayName: string,
   subs: SubscriptionKind[],
+  refreshEpoch: number,
 ): Promise<OperatorRow[]> {
-  const [installPlans] = await Promise.all([fetchInstallPlansForCluster(clusterKey)]);
+  const [installPlans] = await Promise.all([
+    fetchInstallPlansForCluster(clusterKey, refreshEpoch),
+  ]);
 
   const csvKeys = new Map<string, { ns: string; csv: string }>();
   for (const sub of subs) {
@@ -185,7 +216,7 @@ async function enrichSubscriptionsForCluster(
   const csvMap = new Map<string, ClusterServiceVersionKind | null>();
   await Promise.all(
     [...csvKeys.entries()].map(async ([key, { ns, csv }]) => {
-      const data = await fetchCsv(clusterKey, ns, csv);
+      const data = await fetchCsv(clusterKey, ns, csv, refreshEpoch);
       csvMap.set(key, data);
     }),
   );
@@ -267,12 +298,14 @@ export function useManagedClusterSubscriptions(clusterNames: string[], refreshEp
     setLoaded(false);
     setError(undefined);
 
+    const epoch = refreshEpoch;
+
     (async () => {
       const results = await Promise.allSettled(
         names.map(async (clusterKey) => {
-          const subs = await fetchSubscriptionsForCluster(clusterKey);
+          const subs = await fetchSubscriptionsForCluster(clusterKey, epoch);
           const displayName = displayClusterName(clusterKey);
-          return enrichSubscriptionsForCluster(clusterKey, displayName, subs);
+          return enrichSubscriptionsForCluster(clusterKey, displayName, subs, epoch);
         }),
       );
       if (cancelled) return;

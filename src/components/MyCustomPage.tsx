@@ -132,7 +132,7 @@ const MyCustomPage: React.FC = () => {
   );
 
   const { loading: pluginMetaLoading, canEditPlugin, isExternalGovernancePolicy } =
-    usePluginPolicyEditableMap(rows);
+    usePluginPolicyEditableMap(rows, subscriptionListEpoch);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
