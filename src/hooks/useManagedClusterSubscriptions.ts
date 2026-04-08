@@ -39,6 +39,16 @@ export type OperatorRow = {
   policyGovernanceManaged: boolean;
   /** Plugin migration label applied; create a matching OperatorPolicy next (Install operators or automation). */
   migrationEnrollLabelRequested: boolean;
+  /** Subscription spec snapshot for Install operators deep link (Create policy after migration). */
+  installPrefillQuery: {
+    packageName: string;
+    subscriptionNamespace: string;
+    channel: string;
+    source: string;
+    sourceNamespace: string;
+    installPlanApproval: 'Automatic' | 'Manual';
+    startingCSV: string;
+  } | null;
 };
 
 /**
@@ -257,6 +267,25 @@ async function enrichSubscriptionsForCluster(
         ? '(OperatorPolicy)'
         : null;
 
+    const pkgSpecName = (sub.spec?.name ?? name).trim();
+    const subChannel = (sub.spec?.channel ?? '').trim();
+    const subSource = (sub.spec?.source ?? '').trim();
+    const subSourceNs = (sub.spec?.sourceNamespace ?? '').trim();
+    const prefillApproval: 'Automatic' | 'Manual' =
+      approval === 'Manual' ? 'Manual' : 'Automatic';
+    const installPrefillQuery =
+      pkgSpecName && ns !== '—' && name !== '—'
+        ? {
+            packageName: pkgSpecName,
+            subscriptionNamespace: ns,
+            channel: subChannel,
+            source: subSource,
+            sourceNamespace: subSourceNs,
+            installPlanApproval: prefillApproval,
+            startingCSV: csvName,
+          }
+        : null;
+
     return {
       clusterKey: clusterKey,
       clusterDisplayName: displayName,
@@ -273,6 +302,7 @@ async function enrichSubscriptionsForCluster(
       operatorPolicyRef: ref,
       policyGovernanceManaged,
       migrationEnrollLabelRequested,
+      installPrefillQuery,
     };
   });
 }

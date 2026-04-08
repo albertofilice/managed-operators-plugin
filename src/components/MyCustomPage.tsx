@@ -44,6 +44,7 @@ import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
+import { MOP_Q } from '../utils/installOperatorsPrefill';
 import { useTranslation } from 'react-i18next';
 
 /** Remove OperatorPolicy on the managed cluster when it was created from this plugin (stops governance from recreating the Subscription). */
@@ -519,7 +520,28 @@ const MyCustomPage: React.FC = () => {
                                                   variant="link"
                                                   isInline
                                                   component="a"
-                                                  href="/multicloud/ecosystem/install-operators"
+                                                  href={
+                                                    r.installPrefillQuery
+                                                      ? (() => {
+                                                          const p = r.installPrefillQuery;
+                                                          const q = new URLSearchParams();
+                                                          q.set(MOP_Q.cluster, r.clusterKey);
+                                                          q.set(MOP_Q.package, p.packageName);
+                                                          q.set(MOP_Q.subNs, p.subscriptionNamespace);
+                                                          if (p.channel) q.set(MOP_Q.channel, p.channel);
+                                                          if (p.source) q.set(MOP_Q.catalogSource, p.source);
+                                                          if (p.sourceNamespace) {
+                                                            q.set(MOP_Q.catalogSourceNs, p.sourceNamespace);
+                                                          }
+                                                          q.set(MOP_Q.approval, p.installPlanApproval);
+                                                          if (p.startingCSV) {
+                                                            q.set(MOP_Q.startingCsv, p.startingCSV);
+                                                          }
+                                                          q.set(MOP_Q.policyNs, r.clusterKey);
+                                                          return `/multicloud/ecosystem/install-operators?${q.toString()}`;
+                                                        })()
+                                                      : '/multicloud/ecosystem/install-operators'
+                                                  }
                                                 >
                                                   {t('installed_btn_create_policy')}
                                                 </Button>

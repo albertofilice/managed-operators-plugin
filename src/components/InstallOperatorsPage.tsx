@@ -28,6 +28,7 @@ import {
   Thead,
   Tr,
 } from '@patternfly/react-table';
+import { useHistory, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { PackageManifestKind, PackageManifestList } from '../types/packageManifest';
 import type { OperatorPolicyKind } from '../types/operatorPolicy';
@@ -35,6 +36,11 @@ import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
 import { clusterApiPath } from '../utils/clusterApi';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
+import {
+  parseInstallOperatorsPrefill,
+  urlPrefillToModalPrefill,
+  type OperatorPolicySubscriptionPrefill,
+} from '../utils/installOperatorsPrefill';
 import { listOperatorPoliciesForCluster } from '../utils/listOperatorPolicies';
 import { pluginPoliciesMatchingPackage } from '../utils/operatorPolicyMatch';
 
@@ -90,6 +96,8 @@ function packageRowKey(pm: PackageManifestKind): string {
 
 const InstallOperatorsPage: React.FC = () => {
   const { t } = useTranslation('plugin__managed-operators-plugin');
+  const history = useHistory();
+  const location = useLocation();
   const [clusters] = useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
   const clusterNames = React.useMemo(() => {
@@ -117,6 +125,61 @@ const InstallOperatorsPage: React.FC = () => {
   const [selectedPkg, setSelectedPkg] = React.useState<PackageManifestKind | null>(null);
   const [editPolicy, setEditPolicy] = React.useState<OperatorPolicyKind | null>(null);
   const [submitOk, setSubmitOk] = React.useState<string | null>(null);
+  const [migrationPrefill, setMigrationPrefill] = React.useState<OperatorPolicySubscriptionPrefill | null>(
+    null,
+  );
+
+  const urlPrefill = React.useMemo(
+    () => parseInstallOperatorsPrefill(location.search),
+    [location.search],
+  );
+  const deepLinkConsumedForSearchRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (!urlPrefill) return;
+    if (!clusterNames.includes(urlPrefill.cluster)) return;
+    setSelectedCluster(urlPrefill.cluster);
+  }, [urlPrefill, clusterNames]);
+
+  React.useEffect(() => {
+    if (!urlPrefill) return;
+    if (deepLinkConsumedForSearchRef.current === location.search) return;
+    if (selectedCluster !== urlPrefill.cluster) return;
+    if (loadingPm || pmError) return;
+    if (!packages.length) return;
+    const pm = packages.find(
+      (pkg) =>
+        pkg.metadata?.name === urlPrefill.packageName &&
+        (!urlPrefill.catalogSource ||
+          pkg.status?.catalogSource?.trim() === urlPrefill.catalogSource) &&
+        (!urlPrefill.catalogSourceNamespace ||
+          pkg.status?.catalogSourceNamespace?.trim() === urlPrefill.catalogSourceNamespace),
+    );
+    if (!pm) {
+      if (!loadingPm && packages.length > 0) {
+        deepLinkConsumedForSearchRef.current = location.search;
+        history.replace({ pathname: location.pathname, search: '' });
+      }
+      return;
+    }
+    deepLinkConsumedForSearchRef.current = location.search;
+    setMigrationPrefill(urlPrefillToModalPrefill(urlPrefill));
+    setSubmitOk(null);
+    setSelectedPkg(pm);
+    setModalMode('create');
+    setEditPolicy(null);
+    setModalOpen(true);
+    history.replace({ pathname: location.pathname, search: '' });
+  }, [
+    urlPrefill,
+    selectedCluster,
+    loadingPm,
+    pmError,
+    packages,
+    history,
+    location.pathname,
+    location.search,
+  ]);
 
   React.useEffect(() => {
     if (!selectedCluster) {
@@ -228,6 +291,7 @@ const InstallOperatorsPage: React.FC = () => {
   const openInstallOrEdit = (pm: PackageManifestKind) => {
     const matches = pluginPoliciesMatchingPackage(pm, clusterPolicies);
     setSubmitOk(null);
+    setMigrationPrefill(null);
     setSelectedPkg(pm);
     if (matches.length === 1) {
       setModalMode('edit');
@@ -246,6 +310,7 @@ const InstallOperatorsPage: React.FC = () => {
     setModalOpen(false);
     setEditPolicy(null);
     setModalMode('create');
+    setMigrationPrefill(null);
   };
 
   return (
@@ -439,6 +504,7 @@ const InstallOperatorsPage: React.FC = () => {
         loadingCs={loadingCs}
         csError={csError}
         initialPolicy={modalMode === 'edit' ? editPolicy : null}
+        subscriptionPrefill={modalMode === 'create' ? migrationPrefill : null}
         onSuccess={(msg) => {
           setSubmitOk(msg);
           clearManagedOperatorsGetCache();

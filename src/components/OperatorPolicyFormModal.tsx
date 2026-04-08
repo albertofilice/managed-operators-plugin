@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
+import type { OperatorPolicySubscriptionPrefill } from '../utils/installOperatorsPrefill';
 import { OP_POLICY_MANAGED_ANNOTATION } from '../utils/operatorPolicySubscriptionRef';
 
 const COMPLIANCE_LEVELS: ComplianceLevel[] = ['Compliant', 'NonCompliant'];
@@ -55,6 +56,8 @@ export type OperatorPolicyFormModalProps = {
   csError: unknown;
   initialPolicy?: OperatorPolicyKind | null;
   editLoading?: boolean;
+  /** After create defaults from package, apply these (e.g. Subscription fields from migration deep link). */
+  subscriptionPrefill?: OperatorPolicySubscriptionPrefill | null;
   onSuccess?: (message: string) => void;
 };
 
@@ -131,6 +134,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   csError,
   initialPolicy,
   editLoading,
+  subscriptionPrefill = null,
   onSuccess,
 }) => {
   const { t } = useTranslation('plugin__managed-operators-plugin');
@@ -245,6 +249,23 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     if (!isOpen || mode !== 'create' || !selectedPkg) return;
     resetForCreate(selectedPkg);
   }, [isOpen, mode, selectedPkg, resetForCreate]);
+
+  React.useEffect(() => {
+    if (!isOpen || mode !== 'create' || !selectedPkg || !subscriptionPrefill) return;
+    const p = subscriptionPrefill;
+    const chNames = (selectedPkg.status?.channels ?? []).map((c) => c.name);
+    if (p.subscriptionNamespace) setSubscriptionNamespace(p.subscriptionNamespace);
+    if (p.policyNamespace) setPolicyNamespace(p.policyNamespace);
+    if (p.channel && (chNames.length === 0 || chNames.includes(p.channel))) {
+      setChannel(p.channel);
+    }
+    if (p.sourceNamespace) setSelectedSourceNamespace(p.sourceNamespace);
+    if (p.sourceName) setSelectedSourceName(p.sourceName);
+    if (p.upgradeApproval === 'Automatic' || p.upgradeApproval === 'None') {
+      setUpgradeApproval(p.upgradeApproval);
+    }
+    if (p.startingCSV) setStartingCSV(p.startingCSV);
+  }, [isOpen, mode, selectedPkg, subscriptionPrefill]);
 
   React.useEffect(() => {
     if (!isOpen || mode !== 'edit' || !initialPolicy) return;

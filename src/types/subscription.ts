@@ -9,6 +9,11 @@ export type SubscriptionKind = K8sResourceCommon & {
     labels?: Record<string, string>;
   };
   spec?: {
+    /** OLM package name (often matches Subscription metadata.name). */
+    name?: string;
+    channel?: string;
+    source?: string;
+    sourceNamespace?: string;
     installPlanApproval?: 'Automatic' | 'Manual';
   };
   status?: {
