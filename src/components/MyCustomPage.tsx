@@ -1,3 +1,4 @@
+import '../i18n/registerPluginLocales';
 import * as React from 'react';
 import {
   DocumentTitle,
