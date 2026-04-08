@@ -83,6 +83,7 @@
     "displayName": "Managed cluster operators (OLM)",
     "description": "OLM Subscriptions per managed cluster: CSV status, approval, and InstallPlan upgrades.",
     "exposedModules": {
+      "OperatorsOverviewPage": "./components/OperatorsOverviewPage",
       "MyCustomPage": "./components/MyCustomPage",
       "InstallOperatorsPage": "./components/InstallOperatorsPage"
     },
@@ -92,6 +93,7 @@
   },
   "packageManager": "yarn@4.13.0",
   "dependencies": {
+    "@patternfly/react-charts": "^6.2.2",
     "yaml": "2"
   }
 }

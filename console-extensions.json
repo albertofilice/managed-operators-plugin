@@ -2,6 +2,14 @@
   {
     "type": "console.page/route",
     "properties": {
+      "path": "/multicloud/ecosystem/managed-operators-overview",
+      "component": { "$codeRef": "OperatorsOverviewPage" },
+      "perspective": "acm"
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
       "path": "/multicloud/ecosystem/installed-operators",
       "component": { "$codeRef": "MyCustomPage" },
       "perspective": "acm"
@@ -27,12 +35,25 @@
   {
     "type": "console.navigation/href",
     "properties": {
+      "id": "managed-operators-overview",
+      "perspective": "acm",
+      "section": "mce-ecosystem",
+      "name": "%plugin__managed-operators-plugin~Overview%",
+      "href": "/multicloud/ecosystem/managed-operators-overview",
+      "startsWith": ["/multicloud/ecosystem/managed-operators-overview"],
+      "insertAfter": "mce-ecosystem"
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
       "id": "managed-operators-installed-operators",
       "perspective": "acm",
       "section": "mce-ecosystem",
       "name": "%plugin__managed-operators-plugin~Installed Operators%",
       "href": "/multicloud/ecosystem/installed-operators",
-      "startsWith": ["/multicloud/ecosystem/installed-operators"]
+      "startsWith": ["/multicloud/ecosystem/installed-operators"],
+      "insertAfter": "managed-operators-overview"
     }
   },
   {

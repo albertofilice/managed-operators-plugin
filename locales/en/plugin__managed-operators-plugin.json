@@ -106,6 +106,7 @@
   "overview_chart_gov_standalone": "Standalone",
   "overview_chart_gov_title": "Governance",
   "overview_chart_no_data": "No data",
+  "overview_chart_center_subtitle": "Subscriptions",
   "overview_chart_ref_aria_desc": "Subscriptions with an OperatorPolicy reference annotation versus without",
   "overview_chart_ref_aria_title": "Subscription policy annotation",
   "overview_chart_ref_title": "Policy reference",

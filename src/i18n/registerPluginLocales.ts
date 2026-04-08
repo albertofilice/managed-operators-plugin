@@ -1,4 +1,5 @@
-import i18next from 'i18next';
+import type { i18n } from 'i18next';
+import { getI18n } from 'react-i18next';
 import * as enNs from '../../locales/en/plugin__managed-operators-plugin.json';
 
 const NS = 'plugin__managed-operators-plugin';
@@ -6,16 +7,21 @@ const en = enNs as unknown as Record<string, unknown>;
 
 /**
  * Injects plugin strings into the host Console i18next instance when this chunk loads.
- * Relying only on copied `dist/locales/` is not enough on some ACM/OCP builds: without this,
- * `useTranslation(NS)` returns raw keys (overview_heading, …).
+ * Do not import the default `i18next` package here: it is not a Console shared module, so you
+ * would get a second instance and `useTranslation` would still miss keys. `getI18n()` comes
+ * from shared `react-i18next` and points at the same instance the shell uses.
  */
-function mergeEnglishInto(lng: string): void {
-  i18next.addResourceBundle(lng, NS, en, true, true);
+function mergeEnglishInto(instance: i18n, lng: string): void {
+  instance.addResourceBundle(lng, NS, en, true, true);
 }
 
 function register(): void {
+  const instance = getI18n();
+  if (!instance) {
+    return;
+  }
   const langs = new Set<string>(['en', 'en-US']);
-  const current = i18next.language;
+  const current = instance.language;
   if (current) {
     langs.add(current);
     const short = current.split('-')[0];
@@ -24,12 +30,21 @@ function register(): void {
     }
   }
   for (const lng of langs) {
-    mergeEnglishInto(lng);
+    mergeEnglishInto(instance, lng);
   }
 }
 
-if (i18next.isInitialized) {
-  register();
-} else {
-  i18next.on('initialized', register);
+function attachWhenReady(): void {
+  const instance = getI18n();
+  if (!instance) {
+    setTimeout(attachWhenReady, 0);
+    return;
+  }
+  if (instance.isInitialized) {
+    register();
+  } else {
+    instance.on('initialized', register);
+  }
 }
+
+attachWhenReady();

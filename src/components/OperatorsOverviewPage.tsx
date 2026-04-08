@@ -19,7 +19,7 @@ import {
   Spinner,
   Title,
 } from '@patternfly/react-core';
-import { ChartDonut } from '@patternfly/react-charts';
+import { ChartDonut, ChartThemeColor } from '@patternfly/react-charts';
 import { useTranslation } from 'react-i18next';
 import { useManagedClusterSubscriptions, type OperatorRow } from '../hooks/useManagedClusterSubscriptions';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
@@ -57,8 +57,9 @@ function groupRowsByCluster(rows: OperatorRow[]): Map<string, OperatorRow[]> {
   return m;
 }
 
-const CHART_SIZE = 200;
-const CHART_PAD = { bottom: 72, left: 8, right: 8, top: 8 };
+const CHART_WIDTH = 280;
+const CHART_HEIGHT = 260;
+const CHART_PAD = { bottom: 78, left: 16, right: 16, top: 16 };
 
 function OverviewDonut({
   title,
@@ -66,31 +67,43 @@ function OverviewDonut({
   ariaDesc,
   data,
   noDataLabel,
+  centerSubtitle,
 }: {
   title: string;
   ariaTitle: string;
   ariaDesc: string;
   data: { x: string; y: number }[];
   noDataLabel: string;
+  centerSubtitle: string;
 }) {
   const hasData = data.some((d) => d.y > 0);
   const chartData = hasData ? data : [{ x: noDataLabel, y: 1 }];
+  const total = hasData ? data.reduce((sum, d) => sum + d.y, 0) : 0;
+  const legendData = hasData
+    ? data.map((d) => ({ name: `${d.x}: ${d.y}` }))
+    : [{ name: `${noDataLabel}: 0` }];
 
   return (
     <Card className="managed-operators-plugin__overview-card" isCompact>
       <CardTitle>{title}</CardTitle>
       <CardBody className="pf-v6-u-display-flex pf-v6-u-justify-content-center">
         <ChartDonut
+          allowTooltip
           ariaDesc={ariaDesc}
           ariaTitle={ariaTitle}
           constrainToVisibleArea
           data={chartData}
-          height={CHART_SIZE}
+          height={CHART_HEIGHT}
+          labels={({ datum }) => `${datum.x}: ${datum.y}`}
+          legendData={legendData}
           legendOrientation="horizontal"
           legendPosition="bottom"
           name={title}
           padding={CHART_PAD}
-          width={CHART_SIZE}
+          subTitle={centerSubtitle}
+          themeColor={ChartThemeColor.multiOrdered}
+          title={String(total)}
+          width={CHART_WIDTH}
         />
       </CardBody>
     </Card>
@@ -185,6 +198,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   title={t('overview_chart_csv_title')}
                   ariaTitle={t('overview_chart_csv_aria_title')}
                   ariaDesc={t('overview_chart_csv_aria_desc')}
+                  centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
                     { x: t('overview_chart_csv_succeeded'), y: stats.csvOk },
@@ -197,6 +211,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   title={t('overview_chart_upgrade_title')}
                   ariaTitle={t('overview_chart_upgrade_aria_title')}
                   ariaDesc={t('overview_chart_upgrade_aria_desc')}
+                  centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
                     { x: t('overview_chart_upgrade_pending'), y: stats.upgradePending },
@@ -209,6 +224,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   title={t('overview_chart_gov_title')}
                   ariaTitle={t('overview_chart_gov_aria_title')}
                   ariaDesc={t('overview_chart_gov_aria_desc')}
+                  centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
                     { x: t('overview_chart_gov_policy'), y: stats.gov },
@@ -221,6 +237,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   title={t('overview_chart_ref_title')}
                   ariaTitle={t('overview_chart_ref_aria_title')}
                   ariaDesc={t('overview_chart_ref_aria_desc')}
+                  centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
                     { x: t('overview_chart_ref_with'), y: stats.withRef },

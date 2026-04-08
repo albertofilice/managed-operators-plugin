@@ -4,6 +4,7 @@ Dynamic console plugin for **Red Hat Advanced Cluster Management (RHACM)** / **m
 
 ## Features
 
+- **Overview** (`/multicloud/ecosystem/managed-operators-overview`): dashboard-style summary with **ChartDonut** cards (CSV health, pending upgrades, governance vs standalone OLM, policy reference) plus per-cluster counts and links to the other plugin pages.
 - **Installed Operators** (`/multicloud/ecosystem/installed-operators`): OLM **Subscriptions** for each cluster (hub and/or managed), CSV status, InstallPlan approval, **OperatorPolicy** references where present; **Edit policy** only when the `OperatorPolicy` was created from this plugin (annotation `console.openshift.io/managed-operators-plugin-created=true`). Policies reconciled from a hub **Policy**, GitOps, or YAML (no plugin annotation) are labeled **External** — change them via RHACM / GitOps, not **Uninstall** here (the subscription would be recreated). **Uninstall** is offered for governance-backed installs that are **not** external (e.g. created from this plugin’s flow), understanding the OperatorPolicy may still recreate the Subscription until the policy is removed or changed; **Migrate to OperatorPolicy** for manual OLM installs (opt-in label `managed-operators-plugin.openshift.io/enroll-operator-policy=true`, then create a matching policy from **Install operators** or automation).
 - **Install operators** (`/multicloud/ecosystem/install-operators`): guided install flow aligned with OperatorPolicy and catalogs.
 
@@ -12,6 +13,12 @@ Navigation entries appear under **Ecosystem** in the ACM console (after **Infras
 ## Screenshots
 
 From the **Fleet Management → Ecosystem** menu in the ACM console.
+
+### Overview
+
+Dashboard with **ChartDonut** cards (CSV phase, upgrades, governance, policy reference), center totals, legends, and summary counts per cluster.
+
+![Managed operators overview: donut charts and summary cards](docs/images/overview.png)
 
 ### Managed cluster operators (Installed Operators)
 
