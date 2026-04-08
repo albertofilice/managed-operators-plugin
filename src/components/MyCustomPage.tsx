@@ -38,6 +38,7 @@ import {
 import { useManagedClusterSubscriptions, type OperatorRow } from '../hooks/useManagedClusterSubscriptions';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
+import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
 import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
 import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
@@ -254,6 +255,7 @@ const MyCustomPage: React.FC = () => {
       const refNs = migrateRow.namespace;
       const refName = migrateRow.name;
       setMigrateRow(null);
+      clearManagedOperatorsGetCache();
       setSubscriptionListEpoch((n) => n + 1);
       setEditSuccess(
         t('installed_migration_success', { namespace: refNs, name: refName }),
@@ -287,6 +289,7 @@ const MyCustomPage: React.FC = () => {
       );
       await consoleFetchJSON.delete(subUrl);
       setUninstallRow(null);
+      clearManagedOperatorsGetCache();
       setSubscriptionListEpoch((n) => n + 1);
       if (removedPolicy && row.operatorPolicyRef) {
         setEditSuccess(
@@ -691,6 +694,8 @@ const MyCustomPage: React.FC = () => {
         editLoading={editLoading}
         onSuccess={(msg) => {
           setEditSuccess(msg);
+          clearManagedOperatorsGetCache();
+          setSubscriptionListEpoch((n) => n + 1);
           closeEditModal();
         }}
       />

@@ -33,6 +33,7 @@ import type { PackageManifestKind, PackageManifestList } from '../types/packageM
 import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
 import { clusterApiPath } from '../utils/clusterApi';
+import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import { listOperatorPoliciesForCluster } from '../utils/listOperatorPolicies';
 import { pluginPoliciesMatchingPackage } from '../utils/operatorPolicyMatch';
@@ -440,6 +441,7 @@ const InstallOperatorsPage: React.FC = () => {
         initialPolicy={modalMode === 'edit' ? editPolicy : null}
         onSuccess={(msg) => {
           setSubmitOk(msg);
+          clearManagedOperatorsGetCache();
           void refetchPolicies();
         }}
       />

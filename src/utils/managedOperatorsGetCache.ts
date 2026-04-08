@@ -2,6 +2,10 @@
  * Short-lived in-memory cache for idempotent GETs (subscriptions, CSVs, policy lists).
  * Scopes: `refreshEpoch` (subscription reload) and `policyListScope` (Installed Operators refresh)
  * avoid stale UI after explicit user actions.
+ *
+ * Overview uses `refreshEpoch === 0` forever, so it shares cache keys with any other view at epoch 0.
+ * After mutations (migrate label, uninstall, policy save), call `clearManagedOperatorsGetCache()` so
+ * Overview and Install Operators do not reuse pre-mutation GETs until TTL expires.
  */
 
 export const MANAGED_OPERATORS_GET_CACHE_TTL_MS = 45_000;
@@ -49,4 +53,9 @@ export function operatorPolicyListCacheKey(listScope: number, url: string): stri
 
 export function operatorPolicyGetCacheKey(listScope: number, url: string): string {
   return `opg|${listScope}|${url}`;
+}
+
+/** Drop all cached GETs (e.g. after PATCH subscription or create OperatorPolicy). */
+export function clearManagedOperatorsGetCache(): void {
+  store.clear();
 }
