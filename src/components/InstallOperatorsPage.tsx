@@ -27,6 +27,7 @@ import {
   Thead,
   Tr,
 } from '@patternfly/react-table';
+import { useTranslation } from 'react-i18next';
 import type { PackageManifestKind, PackageManifestList } from '../types/packageManifest';
 import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
@@ -86,6 +87,7 @@ function packageRowKey(pm: PackageManifestKind): string {
 }
 
 const InstallOperatorsPage: React.FC = () => {
+  const { t } = useTranslation('plugin__managed-operators-plugin');
   const [clusters] = useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
   const clusterNames = React.useMemo(() => {
@@ -246,19 +248,17 @@ const InstallOperatorsPage: React.FC = () => {
 
   return (
     <>
-      <DocumentTitle>Install operators (OperatorPolicy)</DocumentTitle>
+      <DocumentTitle>{t('install_doc_title')}</DocumentTitle>
       <div className="pf-v6-u-px-lg pf-v6-u-pt-lg pf-v6-u-pb-sm">
-        <Title headingLevel="h1">Install operators</Title>
+        <Title headingLevel="h1">{t('install_heading')}</Title>
         <p className="pf-v6-u-mt-sm">
-          Browse <strong>PackageManifests</strong> on a managed cluster (same catalog as{' '}
-          <code>oc get packagemanifest</code> on that cluster), then create an{' '}
-          <strong>OperatorPolicy</strong> so the governance controller can install the operator there. See{' '}
+          {t('install_intro_before_link')}{' '}
           <a
             href="https://developers.redhat.com/articles/2024/08/08/getting-started-operatorpolicy"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Getting started with OperatorPolicy
+            {t('install_link_operatorpolicy')}
           </a>
           .
         </p>
@@ -268,7 +268,7 @@ const InstallOperatorsPage: React.FC = () => {
         <Card>
           <CardBody>
             <Form className="pf-v6-u-mb-lg" maxWidth="900px">
-              <FormGroup label="Managed cluster" fieldId="cluster-select">
+              <FormGroup label={t('install_label_managed_cluster')} fieldId="cluster-select">
                 <FormSelect
                   id="cluster-select"
                   value={selectedCluster}
@@ -278,49 +278,47 @@ const InstallOperatorsPage: React.FC = () => {
                     setProviderFilter('');
                     setCatalogFilter('');
                   }}
-                  aria-label="Managed cluster"
+                  aria-label={t('install_aria_managed_cluster')}
                 >
-                  <FormSelectOption value="" label="Select a Ready cluster" />
+                  <FormSelectOption value="" label={t('install_placeholder_select_cluster')} />
                   {clusterNames.map((n) => (
                     <FormSelectOption key={n} value={n} label={n} />
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Filter by package name" fieldId="filter-pm">
+              <FormGroup label={t('install_label_filter_package')} fieldId="filter-pm">
                 <TextInput
                   id="filter-pm"
                   value={nameFilter}
                   onChange={(_e, v) => setNameFilter(v)}
-                  placeholder="Substring match on package name…"
+                  placeholder={t('install_placeholder_filter_package')}
                   isDisabled={!selectedCluster}
                 />
-                <FormHelperText>
-                  Case-insensitive. The same package can appear multiple times (one row per catalog).
-                </FormHelperText>
+                <FormHelperText>{t('install_helper_filter_package')}</FormHelperText>
               </FormGroup>
-              <FormGroup label="Filter by provider" fieldId="filter-provider">
+              <FormGroup label={t('install_label_filter_provider')} fieldId="filter-provider">
                 <FormSelect
                   id="filter-provider"
                   value={providerFilter}
                   onChange={(_e, v) => setProviderFilter(String(v))}
-                  aria-label="Provider filter"
+                  aria-label={t('install_aria_provider_filter')}
                   isDisabled={!selectedCluster || !packages.length}
                 >
-                  <FormSelectOption value="" label="All providers" />
+                  <FormSelectOption value="" label={t('install_option_all_providers')} />
                   {providerOptions.map((p) => (
                     <FormSelectOption key={p} value={p} label={p} />
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Filter by catalog" fieldId="filter-catalog">
+              <FormGroup label={t('install_label_filter_catalog')} fieldId="filter-catalog">
                 <FormSelect
                   id="filter-catalog"
                   value={catalogFilter}
                   onChange={(_e, v) => setCatalogFilter(String(v))}
-                  aria-label="Catalog filter"
+                  aria-label={t('install_aria_catalog_filter')}
                   isDisabled={!selectedCluster || !packages.length}
                 >
-                  <FormSelectOption value="" label="All catalogs" />
+                  <FormSelectOption value="" label={t('install_option_all_catalogs')} />
                   {catalogOptions.map((c) => (
                     <FormSelectOption key={c} value={c} label={c} />
                   ))}
@@ -329,32 +327,33 @@ const InstallOperatorsPage: React.FC = () => {
             </Form>
 
             {!selectedCluster && (
-              <p className="pf-v6-u-text-color-subtle">Choose a cluster to load PackageManifests.</p>
+              <p className="pf-v6-u-text-color-subtle">{t('install_choose_cluster_hint')}</p>
             )}
 
             {selectedCluster && loadingPm && (
               <div className="pf-v6-u-text-align-center pf-v6-u-p-xl">
-                <Spinner aria-label="Loading packages" />
+                <Spinner aria-label={t('install_loading_packages_aria')} />
               </div>
             )}
 
             {pmError && (
-              <Alert variant="danger" title="Could not list PackageManifests">
+              <Alert variant="danger" title={t('install_err_list_pm_title')}>
                 {String(pmError)}
               </Alert>
             )}
 
             {selectedCluster && !loadingPm && !pmError && (
               <p className="pf-v6-u-mb-md">
-                <strong>{filtered.length}</strong> row(s){' '}
+                <strong>{filtered.length}</strong>{' '}
+                {t('install_row_word', { count: filtered.length })}{' '}
                 {nameFilter.trim() || providerFilter || catalogFilter
-                  ? 'matching filters'
-                  : 'total'}
+                  ? t('install_summary_matching')
+                  : t('install_summary_total')}
                 .
                 {loadingPolicies && (
                   <span className="pf-v6-u-ml-sm pf-v6-u-text-color-subtle">
                     <Spinner size="sm" className="pf-v6-u-mr-sm" />
-                    Loading OperatorPolicies…
+                    {t('install_loading_policies')}
                   </span>
                 )}
               </p>
@@ -362,13 +361,13 @@ const InstallOperatorsPage: React.FC = () => {
 
             {selectedCluster && !loadingPm && !pmError && filtered.length > 0 && (
               <div className="pf-v6-u-w-100" style={{ overflow: 'auto', maxWidth: '100%' }}>
-                  <Table aria-label="Package manifests" borders gridBreakPoint="">
+                  <Table aria-label={t('install_table_aria')} borders gridBreakPoint="">
                   <Thead>
                     <Tr>
-                      <Th>Package</Th>
-                      <Th>Catalog</Th>
-                      <Th>Provider</Th>
-                      <Th>Default / channels</Th>
+                      <Th>{t('install_col_package')}</Th>
+                      <Th>{t('install_col_catalog')}</Th>
+                      <Th>{t('install_col_provider')}</Th>
+                      <Th>{t('install_col_channels')}</Th>
                       <Th />
                     </Tr>
                   </Thead>
@@ -379,21 +378,21 @@ const InstallOperatorsPage: React.FC = () => {
                       const hasPlugin = matches.length >= 1;
                       return (
                         <Tr key={packageRowKey(pm)}>
-                          <Td dataLabel="Package">
+                          <Td dataLabel={t('install_col_package')}>
                             <span className="pf-v6-u-font-family-monospace">{pm.metadata?.name}</span>
                           </Td>
-                          <Td dataLabel="Catalog">
+                          <Td dataLabel={t('install_col_catalog')}>
                             <span className="pf-v6-u-font-family-monospace">{packageCatalogLabel(pm)}</span>
                           </Td>
-                          <Td dataLabel="Provider">{pm.status?.provider?.name ?? '—'}</Td>
-                          <Td dataLabel="Channels">{defaultChannels(pm)}</Td>
-                          <Td dataLabel="Actions" modifier="fitContent">
+                          <Td dataLabel={t('install_col_provider')}>{pm.status?.provider?.name ?? '—'}</Td>
+                          <Td dataLabel={t('install_col_channels')}>{defaultChannels(pm)}</Td>
+                          <Td dataLabel={t('install_col_actions')} modifier="fitContent">
                             {conflict && (
                               <span
                                 className="pf-v6-u-mr-sm pf-v6-u-text-color-subtle"
-                                title="Multiple plugin-managed OperatorPolicies match this package/catalog; verify on the cluster."
+                                title={t('install_conflict_tooltip')}
                               >
-                                Conflict
+                                {t('install_conflict_badge')}
                               </span>
                             )}
                             <Button
@@ -401,7 +400,7 @@ const InstallOperatorsPage: React.FC = () => {
                               size="sm"
                               onClick={() => openInstallOrEdit(pm)}
                             >
-                              {hasPlugin ? 'Edit OperatorPolicy' : 'Install via OperatorPolicy'}
+                              {hasPlugin ? t('install_btn_edit_policy') : t('install_btn_install')}
                             </Button>
                           </Td>
                         </Tr>
@@ -413,7 +412,7 @@ const InstallOperatorsPage: React.FC = () => {
             )}
 
             {submitOk && (
-              <Alert className="pf-v6-u-mt-md" variant="success" isInline title="Success">
+              <Alert className="pf-v6-u-mt-md" variant="success" isInline title={t('install_alert_success_title')}>
                 {submitOk}
               </Alert>
             )}

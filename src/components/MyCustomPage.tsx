@@ -42,6 +42,7 @@ import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
+import { useTranslation } from 'react-i18next';
 
 /** Remove OperatorPolicy on the managed cluster when it was created from this plugin (stops governance from recreating the Subscription). */
 async function deletePluginOperatorPolicyIfPresent(
@@ -113,6 +114,7 @@ function CsvPhaseLabel({ succeeded, phase }: { succeeded: boolean; phase: string
 }
 
 const MyCustomPage: React.FC = () => {
+  const { t } = useTranslation('plugin__managed-operators-plugin');
   const [clusters, clustersLoaded, clustersError] = useK8sWatchResource<ManagedClusterKind[]>(
     managedClusterWatch,
   );
@@ -193,20 +195,18 @@ const MyCustomPage: React.FC = () => {
       );
       const policy = (await consoleFetchJSON(url, 'GET')) as OperatorPolicyKind;
       if (policy.metadata?.annotations?.[PLUGIN_CREATED_ANNOTATION] !== 'true') {
-        setEditFetchError(
-          'This OperatorPolicy is no longer marked as created by this plugin (annotation missing). Reload the page.',
-        );
+        setEditFetchError(t('installed_err_annotation_missing'));
         setEditPolicy(null);
       } else {
         setEditPolicy(policy);
       }
     } catch (e) {
-      setEditFetchError(`Failed to load OperatorPolicy: ${String(e)}`);
+      setEditFetchError(t('installed_err_load_policy', { error: String(e) }));
       setEditPolicy(null);
     } finally {
       setEditLoading(false);
     }
-  }, [canEditPlugin]);
+  }, [canEditPlugin, t]);
 
   const closeEditModal = () => {
     setEditModalOpen(false);
@@ -255,7 +255,7 @@ const MyCustomPage: React.FC = () => {
       setMigrateRow(null);
       setSubscriptionListEpoch((n) => n + 1);
       setEditSuccess(
-        `Migration label set on ${refNs}/${refName}. Create a matching OperatorPolicy (Install operators page) or let your cluster automation react to the label.`,
+        t('installed_migration_success', { namespace: refNs, name: refName }),
       );
     } catch (e) {
       setMigrateError(String(e));
@@ -289,15 +289,28 @@ const MyCustomPage: React.FC = () => {
       setSubscriptionListEpoch((n) => n + 1);
       if (removedPolicy && row.operatorPolicyRef) {
         setEditSuccess(
-          `OperatorPolicy ${row.operatorPolicyRef.namespace}/${row.operatorPolicyRef.name} removed, then Subscription ${row.namespace}/${row.name} removed. The operator may finish uninstalling; CRDs can remain depending on OLM settings.`,
+          t('installed_uninstall_success_both', {
+            policyNs: row.operatorPolicyRef.namespace,
+            policyName: row.operatorPolicyRef.name,
+            subNs: row.namespace,
+            subName: row.name,
+          }),
         );
       } else if (row.operatorPolicyRef && !removedPolicy) {
         setEditSuccess(
-          `Subscription ${row.namespace}/${row.name} removed. The OperatorPolicy (${row.operatorPolicyRef.namespace}/${row.operatorPolicyRef.name}) was not removed (not created from this console or not reachable); delete it on the cluster if the subscription reappears.`,
+          t('installed_uninstall_success_policy_kept', {
+            subNs: row.namespace,
+            subName: row.name,
+            policyNs: row.operatorPolicyRef.namespace,
+            policyName: row.operatorPolicyRef.name,
+          }),
         );
       } else {
         setEditSuccess(
-          `Subscription ${row.namespace}/${row.name} removed. The operator may finish uninstalling; CRDs can remain depending on OLM settings.`,
+          t('installed_uninstall_success_sub_only', {
+            subNs: row.namespace,
+            subName: row.name,
+          }),
         );
       }
     } catch (e) {
@@ -309,14 +322,10 @@ const MyCustomPage: React.FC = () => {
 
   return (
     <>
-      <DocumentTitle>Managed cluster operators (OLM)</DocumentTitle>
+      <DocumentTitle>{t('installed_document_title')}</DocumentTitle>
       <div className="pf-v6-u-px-lg pf-v6-u-pt-lg pf-v6-u-pb-sm">
-        <Title headingLevel="h1">Managed cluster operators (OLM)</Title>
-        <p className="pf-v6-u-mt-sm">
-          OLM Subscriptions per managed cluster: installed operators (by namespace), CSV phase, approval
-          mode, pending upgrades via InstallPlans, and OperatorPolicy references when the subscription is
-          governance-managed.
-        </p>
+        <Title headingLevel="h1">{t('installed_heading')}</Title>
+        <p className="pf-v6-u-mt-sm">{t('installed_intro')}</p>
       </div>
 
       <div className="pf-v6-u-px-lg pf-v6-u-pb-lg">
@@ -324,45 +333,42 @@ const MyCustomPage: React.FC = () => {
           <CardBody>
             {!loaded && (
               <div className="pf-v6-u-text-align-center pf-v6-u-p-xl">
-                <Spinner aria-label="Loading" />
+                <Spinner aria-label={t('installed_loading_aria')} />
               </div>
             )}
 
             {loadError && (
-              <Alert className="pf-v6-u-mb-md" variant="warning" title="Could not load some data">
+              <Alert className="pf-v6-u-mb-md" variant="warning" title={t('installed_alert_load_title')}>
                 {String(loadError)}
-                <p className="pf-v6-u-mt-sm">
-                  Ensure you have access to the MCE <code>managedclusterproxy</code> path and the MCE console
-                  plugin is enabled.
-                </p>
+                <p className="pf-v6-u-mt-sm">{t('installed_alert_load_body')}</p>
               </Alert>
             )}
 
             {editSuccess && (
-              <Alert className="pf-v6-u-mb-md" variant="success" isInline title="Policy updated">
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="success"
+                isInline
+                title={t('installed_alert_success_title')}
+              >
                 {editSuccess}
               </Alert>
             )}
 
             {loaded && clusterNames.length === 0 && rows.length === 0 && !loadError && (
-              <EmptyState icon={CubesIcon} titleText="No managed clusters and no hub subscriptions">
-                <EmptyStateBody>
-                  No Ready ManagedClusters were found and no subscriptions were read on the hub session.
-                  Check permissions and ManagedCluster resources.
-                </EmptyStateBody>
+              <EmptyState icon={CubesIcon} titleText={t('installed_empty_title_clusters')}>
+                <EmptyStateBody>{t('installed_empty_body_clusters')}</EmptyStateBody>
               </EmptyState>
             )}
 
             {loaded && clusterNames.length > 0 && rows.length === 0 && !loadError && (
-              <EmptyState icon={CubesIcon} titleText="No OLM Subscriptions found">
-                <EmptyStateBody>
-                  Ready clusters did not return OLM subscriptions via the proxy, or none are installed.
-                </EmptyStateBody>
+              <EmptyState icon={CubesIcon} titleText={t('installed_empty_title_subs')}>
+                <EmptyStateBody>{t('installed_empty_body_subs')}</EmptyStateBody>
               </EmptyState>
             )}
 
             {loaded && rows.length > 0 && (
-              <Accordion asDefinitionList={false} aria-label="Operators by cluster">
+              <Accordion asDefinitionList={false} aria-label={t('installed_accordion_aria')}>
                 {clusterKeys.map((clusterDisplayName) => {
                   const clusterRows = byCluster.get(clusterDisplayName) ?? [];
                   const tid = safeToggleId(clusterDisplayName);
@@ -371,7 +377,9 @@ const MyCustomPage: React.FC = () => {
                     <AccordionItem key={clusterDisplayName} isExpanded={isExpanded}>
                       <AccordionToggle id={tid} onClick={() => toggleCluster(clusterDisplayName)}>
                         {clusterDisplayName}{' '}
-                        <span className="pf-v6-u-text-color-subtle">({clusterRows.length} operators)</span>
+                        <span className="pf-v6-u-text-color-subtle">
+                          {t('installed_cluster_operators_count', { count: clusterRows.length })}
+                        </span>
                       </AccordionToggle>
                       <AccordionContent
                         id={`${tid}-content`}
@@ -380,22 +388,24 @@ const MyCustomPage: React.FC = () => {
                       >
                         <div className="pf-v6-u-w-100" style={{ overflow: 'auto', maxWidth: '100%' }}>
                             <Table
-                              aria-label={`Operators on ${clusterDisplayName}`}
+                              aria-label={t('installed_table_aria_cluster', {
+                                cluster: clusterDisplayName,
+                              })}
                               borders
                               gridBreakPoint=""
                             >
                             <Thead>
                               <Tr>
-                                <Th>Namespace</Th>
-                                <Th>Subscription</Th>
-                                <Th>OperatorPolicy</Th>
-                                <Th>CSV</Th>
-                                <Th>Version</Th>
-                                <Th>CSV phase</Th>
-                                <Th>Approval</Th>
-                                <Th>Subscription status</Th>
-                                <Th>Upgrade / InstallPlan</Th>
-                                <Th modifier="nowrap">Actions</Th>
+                                <Th>{t('installed_col_namespace')}</Th>
+                                <Th>{t('installed_col_subscription')}</Th>
+                                <Th>{t('installed_col_operator_policy')}</Th>
+                                <Th>{t('installed_col_csv')}</Th>
+                                <Th>{t('installed_col_version')}</Th>
+                                <Th>{t('installed_col_csv_phase')}</Th>
+                                <Th>{t('installed_col_approval')}</Th>
+                                <Th>{t('installed_col_sub_status')}</Th>
+                                <Th>{t('installed_col_upgrade')}</Th>
+                                <Th modifier="nowrap">{t('installed_col_actions')}</Th>
                               </Tr>
                             </Thead>
                             <Tbody>
@@ -417,9 +427,9 @@ const MyCustomPage: React.FC = () => {
                                   !r.policyGovernanceManaged && r.migrationEnrollLabelRequested;
                                 return (
                                   <Tr key={`${r.clusterKey}/${r.namespace}/${r.name}`}>
-                                    <Td dataLabel="Namespace">{r.namespace}</Td>
-                                    <Td dataLabel="Subscription">{r.name}</Td>
-                                    <Td dataLabel="OperatorPolicy">
+                                    <Td dataLabel={t('installed_col_namespace')}>{r.namespace}</Td>
+                                    <Td dataLabel={t('installed_col_subscription')}>{r.name}</Td>
+                                    <Td dataLabel={t('installed_col_operator_policy')}>
                                       {r.operatorPolicyManagedDisplay ? (
                                         <span className="pf-v6-u-display-inline-flex pf-v6-u-align-items-center pf-v6-u-gap-sm pf-v6-u-flex-wrap">
                                           <span
@@ -436,9 +446,9 @@ const MyCustomPage: React.FC = () => {
                                               <Label
                                                 color="grey"
                                                 isCompact
-                                                title="OperatorPolicy not created from this console (e.g. hub Policy or GitOps). Edit via governance or YAML."
+                                                title={t('installed_external_title')}
                                               >
-                                                External
+                                                {t('installed_external_label')}
                                               </Label>
                                             )}
                                         </span>
@@ -446,25 +456,27 @@ const MyCustomPage: React.FC = () => {
                                         '—'
                                       )}
                                     </Td>
-                                    <Td dataLabel="CSV">
+                                    <Td dataLabel={t('installed_col_csv')}>
                                       <span className="pf-v6-u-font-family-monospace pf-v6-u-font-size-sm">
                                         {r.csvFullName}
                                       </span>
                                     </Td>
-                                    <Td dataLabel="Version">{r.csvVersion}</Td>
-                                    <Td dataLabel="CSV phase">
+                                    <Td dataLabel={t('installed_col_version')}>{r.csvVersion}</Td>
+                                    <Td dataLabel={t('installed_col_csv_phase')}>
                                       <CsvPhaseLabel succeeded={r.csvSucceeded} phase={r.csvPhase} />
                                     </Td>
-                                    <Td dataLabel="Approval">{r.installPlanApproval}</Td>
-                                    <Td dataLabel="Subscription status">{r.subscriptionStateDisplay}</Td>
-                                    <Td dataLabel="Upgrade">{r.upgradePending ?? '—'}</Td>
-                                    <Td dataLabel="Actions" modifier="nowrap">
+                                    <Td dataLabel={t('installed_col_approval')}>{r.installPlanApproval}</Td>
+                                    <Td dataLabel={t('installed_col_sub_status')}>
+                                      {r.subscriptionStateDisplay}
+                                    </Td>
+                                    <Td dataLabel={t('installed_col_upgrade')}>{r.upgradePending ?? '—'}</Td>
+                                    <Td dataLabel={t('installed_col_actions')} modifier="nowrap">
                                       <div
                                         className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
                                         style={{ gap: 'var(--pf-t--global--spacer--md)' }}
                                       >
                                         {pluginMetaLoading && r.operatorPolicyRef ? (
-                                          <Spinner size="sm" aria-label="Loading" />
+                                          <Spinner size="sm" aria-label={t('installed_spinner_policy_aria')} />
                                         ) : (
                                           <>
                                             {showEdit && (
@@ -473,7 +485,7 @@ const MyCustomPage: React.FC = () => {
                                                 size="sm"
                                                 onClick={() => openEditPolicy(r)}
                                               >
-                                                Edit policy
+                                                {t('installed_btn_edit_policy')}
                                               </Button>
                                             )}
                                             {showUninstall && (
@@ -482,7 +494,7 @@ const MyCustomPage: React.FC = () => {
                                                 size="sm"
                                                 onClick={() => openUninstall(r)}
                                               >
-                                                Uninstall
+                                                {t('installed_btn_uninstall')}
                                               </Button>
                                             )}
                                             {showMigrate && (
@@ -491,13 +503,13 @@ const MyCustomPage: React.FC = () => {
                                                 size="sm"
                                                 onClick={() => openMigrate(r)}
                                               >
-                                                Migrate to OperatorPolicy
+                                                {t('installed_btn_migrate')}
                                               </Button>
                                             )}
                                             {showMigrationPending && (
                                               <span className="pf-v6-u-font-size-sm pf-v6-u-text-color-subtle">
                                                 <Label color="blue" isCompact>
-                                                  Migration label set
+                                                  {t('installed_label_migration_pending')}
                                                 </Label>{' '}
                                                 <Button
                                                   variant="link"
@@ -505,7 +517,7 @@ const MyCustomPage: React.FC = () => {
                                                   component="a"
                                                   href="/multicloud/ecosystem/install-operators"
                                                 >
-                                                  Create policy
+                                                  {t('installed_btn_create_policy')}
                                                 </Button>
                                               </span>
                                             )}
@@ -534,31 +546,32 @@ const MyCustomPage: React.FC = () => {
         isOpen={Boolean(migrateRow)}
         onClose={closeMigrateModal}
       >
-        <ModalHeader title="Migrate to OperatorPolicy" />
+        <ModalHeader title={t('installed_migration_modal_title')} />
         <ModalBody>
           {migrateRow && (
             <>
-              <p>
-                This subscription was not installed through OperatorPolicy (manual OLM install). To
-                move it under governance, add the opt-in label below. Then create a matching{' '}
-                <strong>OperatorPolicy</strong> on the cluster (e.g. from{' '}
-                <strong>Install operators</strong>) or use automation that watches this label.
-              </p>
+              <p>{t('installed_migration_intro')}</p>
               <p className="pf-v6-u-font-size-sm pf-v6-u-mt-md">
-                Label key:{' '}
+                {t('installed_migration_label_key')}{' '}
                 <code className="pf-v6-u-font-family-monospace">{SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL}</code>
                 <br />
-                Value: <code className="pf-v6-u-font-family-monospace">true</code>
+                {t('installed_migration_label_value')}{' '}
+                <code className="pf-v6-u-font-family-monospace">true</code>
               </p>
               <p className="pf-v6-u-font-size-sm pf-v6-u-text-color-subtle pf-v6-u-mt-md">
-                CLI (cluster context):{' '}
+                {t('installed_migration_cli')}{' '}
                 <code className="pf-v6-u-font-family-monospace">
                   oc label subscription {migrateRow.name}{' '}
                   {SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL}=true -n {migrateRow.namespace}
                 </code>
               </p>
               {migrateError && (
-                <Alert className="pf-v6-u-mt-md" variant="danger" isInline title="Error">
+                <Alert
+                  className="pf-v6-u-mt-md"
+                  variant="danger"
+                  isInline
+                  title={t('installed_modal_error_title')}
+                >
                   {migrateError}
                 </Alert>
               )}
@@ -571,10 +584,10 @@ const MyCustomPage: React.FC = () => {
             onClick={confirmApplyMigrationLabel}
             isDisabled={migrateSubmitting || !migrateRow}
           >
-            {migrateSubmitting ? 'Applying…' : 'Apply label'}
+            {migrateSubmitting ? t('installed_btn_applying') : t('installed_btn_apply_label')}
           </Button>
           <Button variant="link" onClick={closeMigrateModal} isDisabled={migrateSubmitting}>
-            Cancel
+            {t('installed_btn_cancel')}
           </Button>
         </ModalFooter>
       </Modal>
@@ -584,35 +597,43 @@ const MyCustomPage: React.FC = () => {
         isOpen={Boolean(uninstallRow)}
         onClose={closeUninstallModal}
       >
-        <ModalHeader title="Uninstall operator" />
+        <ModalHeader title={t('installed_modal_uninstall_title')} />
         <ModalBody>
           {uninstallRow && (
             <>
               <p>
-                Delete the OLM <strong>Subscription</strong>{' '}
-                <code className="pf-v6-u-font-family-monospace">
-                  {uninstallRow.namespace}/{uninstallRow.name}
-                </code>{' '}
-                on <strong>{uninstallRow.clusterDisplayName}</strong>? This starts operator removal;
-                CSVs and CRDs may remain until cleaned up by OLM or admins.
+                {t('installed_modal_uninstall_body', {
+                  subscription: `${uninstallRow.namespace}/${uninstallRow.name}`,
+                  cluster: uninstallRow.clusterDisplayName,
+                })}
               </p>
               {uninstallRow.operatorPolicyManagedDisplay && (
-                <Alert className="pf-v6-u-mt-md" variant="warning" isInline title="Governance">
-                  If this OperatorPolicy was created from this console, it is removed first, then the
-                  Subscription — so governance does not recreate the install. If the policy is not
-                  plugin-managed, delete or change it on the cluster if the subscription comes back.
+                <Alert
+                  className="pf-v6-u-mt-md"
+                  variant="warning"
+                  isInline
+                  title={t('installed_modal_governance_title')}
+                >
+                  {t('installed_modal_governance_body')}
                 </Alert>
               )}
               {uninstallRow && isExternalGovernancePolicy(uninstallRow) && (
-                <Alert className="pf-v6-u-mt-md" variant="info" isInline title="Not created in this console">
-                  This OperatorPolicy was not created from this plugin (for example it is reconciled
-                  from a hub <strong>Policy</strong> or other automation). Prefer changing or
-                  removing the parent policy from RHACM / GitOps; deleting only the Subscription here
-                  may be enforced again.
+                <Alert
+                  className="pf-v6-u-mt-md"
+                  variant="info"
+                  isInline
+                  title={t('installed_modal_hub_title')}
+                >
+                  {t('installed_modal_hub_body')}
                 </Alert>
               )}
               {uninstallError && (
-                <Alert className="pf-v6-u-mt-md" variant="danger" isInline title="Error">
+                <Alert
+                  className="pf-v6-u-mt-md"
+                  variant="danger"
+                  isInline
+                  title={t('installed_modal_error_title')}
+                >
                   {uninstallError}
                 </Alert>
               )}
@@ -625,10 +646,10 @@ const MyCustomPage: React.FC = () => {
             onClick={confirmUninstall}
             isDisabled={uninstallSubmitting || !uninstallRow}
           >
-            {uninstallSubmitting ? 'Removing…' : 'Uninstall'}
+            {uninstallSubmitting ? t('installed_btn_removing') : t('installed_btn_uninstall')}
           </Button>
           <Button variant="link" onClick={closeUninstallModal} isDisabled={uninstallSubmitting}>
-            Cancel
+            {t('installed_btn_cancel')}
           </Button>
         </ModalFooter>
       </Modal>
@@ -638,15 +659,15 @@ const MyCustomPage: React.FC = () => {
         isOpen={editModalOpen && Boolean(editFetchError) && !editPolicy && !editLoading}
         onClose={closeEditModal}
       >
-        <ModalHeader title="Edit OperatorPolicy" />
+        <ModalHeader title={t('installed_modal_edit_title')} />
         <ModalBody>
-          <Alert variant="danger" isInline title="Error">
+          <Alert variant="danger" isInline title={t('installed_modal_error_title')}>
             {editFetchError}
           </Alert>
         </ModalBody>
         <ModalFooter>
           <Button variant="primary" onClick={closeEditModal}>
-            Close
+            {t('installed_btn_close')}
           </Button>
         </ModalFooter>
       </Modal>

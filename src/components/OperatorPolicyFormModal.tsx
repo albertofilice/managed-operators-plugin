@@ -27,6 +27,7 @@ import type {
   RemovalBehaviorValue,
 } from '../types/operatorPolicy';
 import { TrashIcon } from '@patternfly/react-icons';
+import { useTranslation } from 'react-i18next';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
 import { clusterApiPath } from '../utils/clusterApi';
 
@@ -82,6 +83,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   editLoading,
   onSuccess,
 }) => {
+  const { t } = useTranslation('plugin__managed-operators-plugin');
   const [policyName, setPolicyName] = React.useState('');
   const [policyNamespace, setPolicyNamespace] = React.useState('');
   const [subscriptionNamespace, setSubscriptionNamespace] = React.useState('');
@@ -243,11 +245,11 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
 
   const buildBody = (): OperatorPolicyKind => {
     if (!selectedPkg && mode === 'create') {
-      throw new Error('Package is required');
+      throw new Error(t('policy_modal_err_package_required'));
     }
     const pkgName = mode === 'edit' ? initialPolicy?.spec?.subscription?.name : selectedPkg?.metadata?.name;
     if (!pkgName?.trim()) {
-      throw new Error('Package name is required');
+      throw new Error(t('policy_modal_err_package_name_required'));
     }
     const versions = versionsText
       .split(/[\s,]+/)
@@ -259,12 +261,14 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       try {
         const parsed = parseYaml(subscriptionConfigYaml) as unknown;
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          throw new Error('Subscription config must be a YAML mapping (object).');
+          throw new Error(t('policy_modal_err_sub_config_not_object'));
         }
         subscriptionConfig = parsed as Record<string, unknown>;
       } catch (e) {
         throw new Error(
-          `Invalid subscription config YAML: ${e instanceof Error ? e.message : String(e)}`,
+          t('policy_modal_err_invalid_sub_config_yaml', {
+            detail: e instanceof Error ? e.message : String(e),
+          }),
         );
       }
     }
@@ -353,19 +357,19 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   const submit = async () => {
     if (!clusterName) return;
     if (!policyName.trim() || !policyNamespace.trim()) {
-      setSubmitError('Policy name and namespace are required.');
+      setSubmitError(t('policy_modal_submit_err_name_ns'));
       return;
     }
     if (!subscriptionNamespace.trim()) {
-      setSubmitError('Subscription install namespace is required.');
+      setSubmitError(t('policy_modal_submit_err_sub_ns'));
       return;
     }
     if (!selectedSourceName.trim() || !selectedSourceNamespace.trim()) {
-      setSubmitError('Catalog source and source namespace are required.');
+      setSubmitError(t('policy_modal_submit_err_catalog'));
       return;
     }
     if (!channel.trim()) {
-      setSubmitError('Channel is required.');
+      setSubmitError(t('policy_modal_submit_err_channel'));
       return;
     }
     setSubmitting(true);
@@ -392,12 +396,20 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       if (mode === 'create') {
         await consoleFetchJSON.post(url, body);
         onSuccess?.(
-          `OperatorPolicy ${policyNamespace.trim()}/${policyName.trim()} created on cluster ${clusterName}.`,
+          t('policy_modal_success_created', {
+            namespace: policyNamespace.trim(),
+            name: policyName.trim(),
+            cluster: clusterName,
+          }),
         );
       } else {
         await consoleFetchJSON.put(url, body);
         onSuccess?.(
-          `OperatorPolicy ${policyNamespace.trim()}/${policyName.trim()} updated on cluster ${clusterName}.`,
+          t('policy_modal_success_updated', {
+            namespace: policyNamespace.trim(),
+            name: policyName.trim(),
+            cluster: clusterName,
+          }),
         );
       }
       onClose();
@@ -417,36 +429,37 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       onClose={() => !submitting && !editLoading && onClose()}
     >
       <ModalHeader
-        title={mode === 'create' ? 'Create OperatorPolicy' : 'Edit OperatorPolicy'}
+        title={mode === 'create' ? t('policy_modal_title_create') : t('policy_modal_title_edit')}
         description={
-          mode === 'create' ? (
-            <>Package: {pkgLabel}</>
-          ) : (
-            <>
-              {policyNamespace}/{policyName}
-            </>
-          )
+          mode === 'create'
+            ? t('policy_modal_desc_package', { package: pkgLabel })
+            : t('policy_modal_desc_edit', { namespace: policyNamespace, name: policyName })
         }
       />
       <ModalBody>
         {editLoading && (
           <div className="pf-v6-u-text-align-center pf-v6-u-p-md">
-            <Spinner /> Loading policy…
+            <Spinner /> {t('policy_modal_loading_policy')}
           </div>
         )}
         {!editLoading && (
           <Form>
             {mode === 'create' && (
               <p>
-                Package: <strong>{pkgLabel}</strong>
+                {t('policy_modal_label_package_display')}: <strong>{pkgLabel}</strong>
               </p>
             )}
             {submitError && (
-              <Alert className="pf-v6-u-mb-md" variant="danger" isInline title="Error">
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="danger"
+                isInline
+                title={t('policy_modal_alert_error_title')}
+              >
                 {submitError}
               </Alert>
             )}
-            <FormGroup label="Policy name" isRequired fieldId="pol-name">
+            <FormGroup label={t('policy_modal_label_policy_name')} isRequired fieldId="pol-name">
               <TextInput
                 id="pol-name"
                 value={policyName}
@@ -454,36 +467,30 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                 isDisabled={mode === 'edit'}
               />
             </FormGroup>
-            <FormGroup label="Policy namespace (on managed cluster)" isRequired fieldId="pol-ns">
+            <FormGroup label={t('policy_modal_label_policy_ns')} isRequired fieldId="pol-ns">
               <TextInput
                 id="pol-ns"
                 value={policyNamespace}
                 onChange={(_e, v) => setPolicyNamespace(v)}
                 isDisabled={mode === 'edit'}
               />
-              <FormHelperText>
-                Namespace of the OperatorPolicy CR. Defaults to the managed cluster name when creating.
-              </FormHelperText>
+              <FormHelperText>{t('policy_modal_helper_policy_ns')}</FormHelperText>
             </FormGroup>
-            <FormGroup label="Subscription install namespace" isRequired fieldId="sub-ns">
+            <FormGroup label={t('policy_modal_label_sub_ns')} isRequired fieldId="sub-ns">
               <TextInput
                 id="sub-ns"
                 value={subscriptionNamespace}
                 onChange={(_e, v) => setSubscriptionNamespace(v)}
               />
-              <FormHelperText>
-                OLM subscription target namespace. Shared namespaces can share InstallPlans across
-                operators. If you configure an OperatorGroup below, its namespace is always the same as
-                this value.
-              </FormHelperText>
+              <FormHelperText>{t('policy_modal_helper_sub_ns')}</FormHelperText>
             </FormGroup>
-            <FormGroup label="Channel" isRequired fieldId="ch">
+            <FormGroup label={t('policy_modal_channel')} isRequired fieldId="ch">
               {(selectedPkg?.status?.channels?.length ?? 0) > 0 ? (
                 <FormSelect
                   id="ch"
                   value={channel}
                   onChange={(_e, v) => setChannel(String(v))}
-                  aria-label="Channel"
+                  aria-label={t('policy_modal_aria_channel')}
                 >
                   {(selectedPkg?.status?.channels ?? []).map((c) => (
                     <FormSelectOption key={c.name} value={c.name} label={c.name} />
@@ -493,35 +500,40 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                 <TextInput id="ch" value={channel} onChange={(_e, v) => setChannel(v)} />
               )}
             </FormGroup>
-            <FormGroup label="Catalog source namespace" isRequired fieldId="cat-ns">
+            <FormGroup label={t('policy_modal_label_catalog_ns')} isRequired fieldId="cat-ns">
               {loadingCs && (
                 <FormHelperText>
-                  <Spinner size="sm" className="pf-v6-u-mr-sm" /> Loading catalog sources…
+                  <Spinner size="sm" className="pf-v6-u-mr-sm" /> {t('policy_modal_loading_catalogs')}
                 </FormHelperText>
               )}
               {csError && (
-                <Alert className="pf-v6-u-mb-sm" variant="warning" isInline title="Catalog sources">
-                  Could not list CatalogSources ({String(csError)}).
+                <Alert
+                  className="pf-v6-u-mb-sm"
+                  variant="warning"
+                  isInline
+                  title={t('policy_modal_alert_catalog_title')}
+                >
+                  {t('policy_modal_alert_catalog_body', { error: String(csError) })}
                 </Alert>
               )}
               <FormSelect
                 id="cat-ns"
                 value={selectedSourceNamespace}
                 onChange={(_e, v) => setSelectedSourceNamespace(String(v))}
-                aria-label="Catalog source namespace"
+                aria-label={t('policy_modal_aria_catalog_ns')}
               >
                 {catalogNamespaces.map((ns) => (
                   <FormSelectOption key={ns} value={ns} label={ns} />
                 ))}
               </FormSelect>
             </FormGroup>
-            <FormGroup label="Catalog source" isRequired fieldId="cat-src">
+            <FormGroup label={t('policy_modal_label_catalog_src')} isRequired fieldId="cat-src">
               {sourcesInSelectedNamespace.length > 0 ? (
                 <FormSelect
                   id="cat-src"
                   value={selectedSourceName}
                   onChange={(_e, v) => setSelectedSourceName(String(v))}
-                  aria-label="Catalog source name"
+                  aria-label={t('policy_modal_aria_catalog_src')}
                 >
                   {sourcesInSelectedNamespace.map((cs) => {
                     const n = cs.metadata?.name ?? '';
@@ -544,8 +556,8 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
               )}
             </FormGroup>
 
-            <ExpandableSection toggleText="Compliance & removal">
-              <FormGroup label="Severity" fieldId="sev">
+            <ExpandableSection toggleText={t('policy_modal_expand_compliance')}>
+              <FormGroup label={t('policy_modal_label_severity')} fieldId="sev">
                 <FormSelect
                   id="sev"
                   value={severity}
@@ -557,7 +569,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   <FormSelectOption value="critical" label="critical" />
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Compliance type" fieldId="ct">
+              <FormGroup label={t('policy_modal_label_compliance_type')} fieldId="ct">
                 <FormSelect
                   id="ct"
                   value={complianceType}
@@ -567,7 +579,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   <FormSelectOption value="mustnothave" label="mustnothave" />
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Compliance: catalog unhealthy" fieldId="cc-cat">
+              <FormGroup label={t('policy_modal_compliance_catalog')} fieldId="cc-cat">
                 <FormSelect
                   id="cc-cat"
                   value={ccCatalog}
@@ -578,7 +590,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Compliance: deployments unavailable" fieldId="cc-dep">
+              <FormGroup label={t('policy_modal_compliance_deploy')} fieldId="cc-dep">
                 <FormSelect
                   id="cc-dep"
                   value={ccDeploy}
@@ -589,7 +601,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Compliance: deprecations present" fieldId="cc-depr">
+              <FormGroup label={t('policy_modal_compliance_depr')} fieldId="cc-depr">
                 <FormSelect
                   id="cc-depr"
                   value={ccDeprec}
@@ -600,7 +612,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Compliance: upgrades available" fieldId="cc-upg">
+              <FormGroup label={t('policy_modal_compliance_upgrade')} fieldId="cc-upg">
                 <FormSelect
                   id="cc-upg"
                   value={ccUpgrade}
@@ -611,7 +623,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Removal: ClusterServiceVersions" fieldId="rb-csv">
+              <FormGroup label={t('policy_modal_label_removal_csv')} fieldId="rb-csv">
                 <FormSelect
                   id="rb-csv"
                   value={rbCsv}
@@ -622,7 +634,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Removal: CustomResourceDefinitions" fieldId="rb-crd">
+              <FormGroup label={t('policy_modal_label_removal_crd')} fieldId="rb-crd">
                 <FormSelect
                   id="rb-crd"
                   value={rbCrd}
@@ -633,7 +645,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Removal: OperatorGroups" fieldId="rb-og">
+              <FormGroup label={t('policy_modal_label_removal_og')} fieldId="rb-og">
                 <FormSelect
                   id="rb-og"
                   value={rbOg}
@@ -644,7 +656,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   ))}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Removal: Subscriptions" fieldId="rb-sub">
+              <FormGroup label={t('policy_modal_label_removal_sub')} fieldId="rb-sub">
                 <FormSelect
                   id="rb-sub"
                   value={rbSub}
@@ -657,27 +669,23 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
               </FormGroup>
             </ExpandableSection>
 
-            <ExpandableSection toggleText="OperatorGroup">
+            <ExpandableSection toggleText={t('policy_modal_expand_og')}>
               <FormHelperText className="pf-v6-u-mb-md">
-                Optional. If unset, the controller may create an OperatorGroup in the subscription
-                namespace when none exists. The OperatorGroup namespace always matches{' '}
-                <strong>Subscription install namespace</strong> above.
+                {t('policy_modal_helper_og_intro')}
               </FormHelperText>
-              <FormGroup label="OperatorGroup name" fieldId="og-name">
+              <FormGroup label={t('policy_modal_label_og_name')} fieldId="og-name">
                 <TextInput id="og-name" value={ogName} onChange={(_e, v) => setOgName(v)} />
               </FormGroup>
-              <FormGroup label="OperatorGroup namespace" fieldId="og-ns">
+              <FormGroup label={t('policy_modal_label_og_ns')} fieldId="og-ns">
                 <TextInput
                   id="og-ns"
                   value={subscriptionNamespace}
                   readOnlyVariant="default"
-                  aria-label="OperatorGroup namespace (same as subscription install namespace)"
+                  aria-label={t('policy_modal_aria_og_ns')}
                 />
-                <FormHelperText>
-                  Always the same as <strong>Subscription install namespace</strong>.
-                </FormHelperText>
+                <FormHelperText>{t('policy_modal_helper_og_ns')}</FormHelperText>
               </FormGroup>
-              <FormGroup label="Selector matchLabels" fieldId="og-ml">
+              <FormGroup label={t('policy_modal_label_og_match')} fieldId="og-ml">
                 {ogLabels.map((row, i) => (
                   <div
                     key={i}
@@ -685,8 +693,8 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   >
                     <div style={{ flex: '1 1 0', minWidth: 0 }}>
                       <TextInput
-                        aria-label="Label key"
-                        placeholder="Key"
+                        aria-label={t('policy_modal_aria_label_key')}
+                        placeholder={t('policy_modal_placeholder_key')}
                         value={row.key}
                         onChange={(_e, v) => {
                           const next = [...ogLabels];
@@ -697,8 +705,8 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                     </div>
                     <div style={{ flex: '1 1 0', minWidth: 0 }}>
                       <TextInput
-                        aria-label="Label value"
-                        placeholder="Value"
+                        aria-label={t('policy_modal_aria_label_value')}
+                        placeholder={t('policy_modal_placeholder_value')}
                         value={row.value}
                         onChange={(_e, v) => {
                           const next = [...ogLabels];
@@ -711,8 +719,8 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                       type="button"
                       variant="plain"
                       icon={<TrashIcon />}
-                      aria-label="Remove label"
-                      title="Remove label"
+                      aria-label={t('policy_modal_aria_remove_label')}
+                      title={t('policy_modal_remove_label_title')}
                       onClick={() => setOgLabels(ogLabels.filter((_, j) => j !== i))}
                     />
                   </div>
@@ -722,7 +730,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                   className="pf-v6-u-mt-sm"
                   onClick={() => setOgLabels([...ogLabels, { key: '', value: '' }])}
                 >
-                  Add label
+                  {t('policy_modal_add_label')}
                 </Button>
               </FormGroup>
             </ExpandableSection>
@@ -730,19 +738,17 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
             {!showSubConfig && (
               <div className="pf-v6-u-mb-lg">
                 <Button variant="secondary" onClick={() => setShowSubConfig(true)}>
-                  + Add custom subscription config (YAML)
+                  {t('policy_modal_add_custom_config')}
                 </Button>
                 <FormHelperText className="pf-v6-u-mt-sm">
-                  Optional: resources, env, volumeMounts, volumes merged under{' '}
-                  <code>spec.subscription.config</code>.
+                  {t('policy_modal_helper_custom_config')}
                 </FormHelperText>
               </div>
             )}
             {showSubConfig && (
-              <FormGroup label="Subscription config (YAML)" fieldId="sub-cfg-yaml">
+              <FormGroup label={t('policy_modal_label_sub_cfg_yaml')} fieldId="sub-cfg-yaml">
                 <FormHelperText className="pf-v6-u-mb-md">
-                  YAML merged under <code>spec.subscription.config</code> (resources, env, volumeMounts,
-                  volumes, …).
+                  {t('policy_modal_helper_sub_cfg_yaml')}
                 </FormHelperText>
                 <TextArea
                   id="sub-cfg-yaml"
@@ -759,40 +765,37 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                     setSubscriptionConfigYaml('');
                   }}
                 >
-                  Remove custom config
+                  {t('policy_modal_btn_remove_custom_config')}
                 </Button>
               </FormGroup>
             )}
 
-            <FormGroup label="Remediation" fieldId="rem">
+            <FormGroup label={t('policy_modal_label_remediation')} fieldId="rem">
               <FormSelect
                 id="rem"
                 value={remediation}
                 onChange={(_e, v) => setRemediation(v as 'inform' | 'enforce')}
               >
-                <FormSelectOption value="inform" label="inform (dry run)" />
-                <FormSelectOption value="enforce" label="enforce" />
+                <FormSelectOption value="inform" label={t('policy_modal_remediation_inform')} />
+                <FormSelectOption value="enforce" label={t('policy_modal_remediation_enforce')} />
               </FormSelect>
             </FormGroup>
-            <FormGroup label="Upgrade approval" fieldId="ua">
+            <FormGroup label={t('policy_modal_label_upgrade_approval')} fieldId="ua">
               <FormSelect
                 id="ua"
                 value={upgradeApproval}
                 onChange={(_e, v) => setUpgradeApproval(v as 'Automatic' | 'None')}
               >
-                <FormSelectOption value="Automatic" label="Automatic" />
-                <FormSelectOption value="None" label="None" />
+                <FormSelectOption value="Automatic" label={t('policy_modal_upgrade_automatic')} />
+                <FormSelectOption value="None" label={t('policy_modal_upgrade_none')} />
               </FormSelect>
             </FormGroup>
-            <FormGroup label="Starting CSV (optional)" fieldId="csv">
+            <FormGroup label={t('policy_modal_label_starting_csv')} fieldId="csv">
               <TextInput id="csv" value={startingCSV} onChange={(_e, v) => setStartingCSV(v)} />
             </FormGroup>
-            <FormGroup label="Allowed versions (optional)" fieldId="vers">
+            <FormGroup label={t('policy_modal_label_allowed_versions')} fieldId="vers">
               <TextInput id="vers" value={versionsText} onChange={(_e, v) => setVersionsText(v)} />
-              <FormHelperText>
-                Comma- or space-separated CSV names. In shared namespaces, include versions for all
-                co-installed operators if needed.
-              </FormHelperText>
+              <FormHelperText>{t('policy_modal_helper_allowed_versions')}</FormHelperText>
             </FormGroup>
           </Form>
         )}
@@ -803,10 +806,14 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
           onClick={submit}
           isDisabled={submitting || editLoading}
         >
-          {submitting ? 'Saving…' : mode === 'create' ? 'Create' : 'Save'}
+          {submitting
+            ? t('policy_modal_btn_saving')
+            : mode === 'create'
+              ? t('policy_modal_btn_create')
+              : t('policy_modal_btn_save')}
         </Button>
         <Button variant="link" onClick={onClose} isDisabled={submitting}>
-          Cancel
+          {t('policy_modal_btn_cancel')}
         </Button>
       </ModalFooter>
     </Modal>
