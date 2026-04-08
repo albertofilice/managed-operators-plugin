@@ -178,6 +178,25 @@ helm upgrade -i managed-operators-plugin charts/openshift-console-plugin \
 
 After deploy, ensure the cluster **Console** loads the plugin (the chart can run a post-install Job to add the plugin name to `Console` spec; see chart notes).
 
+## Roadmap / next features
+
+Planned and under consideration. Contributions and design discussion are welcome via issues.
+
+### High-priority ideas
+
+1. **Minor-version patterns for governed upgrades** — `OperatorPolicy` does not accept arbitrary regex for CSV / version pins. A thin **wrapper or controller-side convention** (or hub-side automation) could resolve patterns such as `smb-csi-driver-operator.v4.20.*`, `advanced-cluster-management.v2.16.*`, or `cert-manager-operator.v1.18.*` into the latest matching **minor** only (no automatic major jumps), then materialize the concrete version the policy applies. Scope: **minor-line automation** only, with clear safety rules and auditability.
+
+2. **YAML tab on install / edit** — Besides the guided form, add a **read/write YAML** tab when installing or editing an **OperatorPolicy** (and related objects where applicable), for power users and copy-paste from docs.
+
+3. **Generate-only YAML (GitOps-first)** — A flow that **only emits** ready-to-commit manifests (e.g. `OperatorPolicy`, namespaces, labels) for **Git** / **Argo CD** / **RHACM Policy** repos, without applying through the console—useful for teams that forbid direct cluster edits.
+
+### Other ideas
+
+- **Overview drill-down** — Click-through from chart segments and summary rows to **pre-filtered** Installed Operators or cluster-scoped views.
+- **Bulk / multi-cluster patterns** — Select several **Ready** clusters and apply the same install template (behind confirmations and RBAC checks).
+- **Stronger testing and docs** — Expand **Cypress** coverage for Overview and policy flows; document **RBAC** matrices and proxy requirements for managed clusters.
+- **More locales** — Additional language packs beyond `en` once strings stabilize.
+
 ## Repository layout (summary)
 
 | Path | Contents |
