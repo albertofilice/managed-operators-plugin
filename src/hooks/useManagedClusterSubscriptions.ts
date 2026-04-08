@@ -12,6 +12,7 @@ import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscrip
 import {
   OP_POLICY_MANAGED_ANNOTATION,
   OP_POLICY_MANAGED_LABEL,
+  formatOperatorPolicyManagedDisplay,
   parseOperatorPolicyRefFromManagedValue,
 } from '../utils/operatorPolicySubscriptionRef';
 
@@ -262,7 +263,7 @@ async function enrichSubscriptionsForCluster(
       enrollRaw === 'true' || enrollRaw === 'True' || enrollRaw === '1';
 
     const operatorPolicyManagedDisplay = managedAnn
-      ? managedAnn
+      ? formatOperatorPolicyManagedDisplay(managedAnn)
       : hasManagedLabel
         ? '(OperatorPolicy)'
         : null;

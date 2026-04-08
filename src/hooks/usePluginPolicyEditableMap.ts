@@ -11,11 +11,26 @@ import {
 import { listOperatorPoliciesForCluster } from '../utils/listOperatorPolicies';
 import type { OperatorRow } from './useManagedClusterSubscriptions';
 
-export type PluginPolicyEditableMap = Record<string, boolean>;
+/** Resolved metadata for one subscription↔policy ref (same fetch as plugin-created check). */
+export type PolicyLineMeta = {
+  pluginCreated: boolean;
+  remediation?: 'inform' | 'enforce';
+};
+
+export type PluginPolicyEditableMap = Record<string, PolicyLineMeta>;
 
 function refKey(r: OperatorRow): string | null {
   if (!r.operatorPolicyRef) return null;
   return `${r.clusterKey}|${r.operatorPolicyRef.namespace}|${r.operatorPolicyRef.name}`;
+}
+
+function metaFromPolicy(policy: OperatorPolicyKind): PolicyLineMeta {
+  const raw = policy.spec?.remediationAction;
+  const remediation = raw === 'inform' || raw === 'enforce' ? raw : undefined;
+  return {
+    pluginCreated: policy.metadata?.annotations?.[PLUGIN_CREATED_ANNOTATION] === 'true',
+    remediation,
+  };
 }
 
 /**
@@ -33,8 +48,11 @@ export function usePluginPolicyEditableMap(
   canEditPlugin: (r: OperatorRow) => boolean;
   /** OperatorPolicy exists on cluster but was not created from this plugin (e.g. hub `Policy` → reconciled OperatorPolicy). */
   isExternalGovernancePolicy: (r: OperatorRow) => boolean;
+  /** Policy spec uses remediation inform (observe-only until enforced elsewhere). */
+  isInformRemediation: (r: OperatorRow) => boolean;
 } {
   const [map, setMap] = React.useState<PluginPolicyEditableMap>({});
+
   const [loading, setLoading] = React.useState(false);
 
   const serialized = React.useMemo(() => {
@@ -67,9 +85,6 @@ export function usePluginPolicyEditableMap(
       const policyPath = (namespace: string, name: string) =>
         `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(namespace)}/operatorpolicies/${encodeURIComponent(name)}`;
 
-      const isPluginCreated = (policy: OperatorPolicyKind) =>
-        policy.metadata?.annotations?.[PLUGIN_CREATED_ANNOTATION] === 'true';
-
       await Promise.all(
         [...clusterKeys].map(async (clusterKey) => {
           const policies = await listOperatorPoliciesForCluster(clusterKey, {
@@ -93,7 +108,7 @@ export function usePluginPolicyEditableMap(
 
               const cached = byNsName.get(`${namespace}|${name}`);
               if (cached) {
-                next[line] = isPluginCreated(cached);
+                next[line] = metaFromPolicy(cached);
                 return;
               }
 
@@ -104,9 +119,9 @@ export function usePluginPolicyEditableMap(
                   MANAGED_OPERATORS_GET_CACHE_TTL_MS,
                   () => consoleFetchJSON(url, 'GET') as Promise<OperatorPolicyKind>,
                 );
-                next[line] = isPluginCreated(policy);
+                next[line] = metaFromPolicy(policy);
               } catch {
-                next[line] = false;
+                next[line] = { pluginCreated: false };
               }
             }),
           );
@@ -128,7 +143,7 @@ export function usePluginPolicyEditableMap(
     (r: OperatorRow) => {
       const k = refKey(r);
       if (!k) return false;
-      return map[k] === true;
+      return map[k]?.pluginCreated === true;
     },
     [map],
   );
@@ -137,10 +152,19 @@ export function usePluginPolicyEditableMap(
     (r: OperatorRow) => {
       const k = refKey(r);
       if (!k || loading) return false;
-      return map[k] === false;
+      return map[k]?.pluginCreated === false;
     },
     [loading, map],
   );
 
-  return { loading, canEditPlugin, isExternalGovernancePolicy };
+  const isInformRemediation = React.useCallback(
+    (r: OperatorRow) => {
+      const k = refKey(r);
+      if (!k || loading) return false;
+      return map[k]?.remediation === 'inform';
+    },
+    [loading, map],
+  );
+
+  return { loading, canEditPlugin, isExternalGovernancePolicy, isInformRemediation };
 }

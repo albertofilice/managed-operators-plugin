@@ -71,6 +71,8 @@
   "installed_err_load_policy": "Failed to load OperatorPolicy: {{error}}",
   "installed_external_label": "External",
   "installed_external_title": "OperatorPolicy not created from this console (e.g. hub Policy or GitOps). Edit via governance or YAML.",
+  "installed_inform_label": "Inform",
+  "installed_inform_title": "Remediation is inform only: the policy reports compliance but does not enforce changes on the cluster.",
   "installed_heading": "Managed cluster operators (OLM)",
   "installed_intro": "OLM Subscriptions per managed cluster: installed operators (by namespace), CSV phase, approval mode, pending upgrades via InstallPlans, and OperatorPolicy references when the subscription is governance-managed.",
   "installed_label_migration_pending": "Migration label set",

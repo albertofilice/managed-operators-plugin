@@ -133,8 +133,12 @@ const MyCustomPage: React.FC = () => {
     subscriptionListEpoch,
   );
 
-  const { loading: pluginMetaLoading, canEditPlugin, isExternalGovernancePolicy } =
-    usePluginPolicyEditableMap(rows, subscriptionListEpoch);
+  const {
+    loading: pluginMetaLoading,
+    canEditPlugin,
+    isExternalGovernancePolicy,
+    isInformRemediation,
+  } = usePluginPolicyEditableMap(rows, subscriptionListEpoch);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
@@ -445,6 +449,17 @@ const MyCustomPage: React.FC = () => {
                                               ? `${r.operatorPolicyManagedDisplay.slice(0, 45)}…`
                                               : r.operatorPolicyManagedDisplay}
                                           </span>
+                                          {!pluginMetaLoading &&
+                                            r.operatorPolicyRef &&
+                                            isInformRemediation(r) && (
+                                              <Label
+                                                color="teal"
+                                                isCompact
+                                                title={t('installed_inform_title')}
+                                              >
+                                                {t('installed_inform_label')}
+                                              </Label>
+                                            )}
                                           {!pluginMetaLoading &&
                                             r.operatorPolicyRef &&
                                             isExternalGovernancePolicy(r) && (

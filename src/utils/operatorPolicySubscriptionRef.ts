@@ -23,3 +23,10 @@ export function parseOperatorPolicyRefFromManagedValue(value: string): { namespa
   if (!namespace || !name) return null;
   return { namespace, name };
 }
+
+/** Canonical display for subscription annotation (ACM may use `ns/name` or `ns.name`). */
+export function formatOperatorPolicyManagedDisplay(raw: string): string {
+  const ref = parseOperatorPolicyRefFromManagedValue(raw);
+  if (ref) return `${ref.namespace}/${ref.name}`;
+  return raw.trim();
+}
