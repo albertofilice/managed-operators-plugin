@@ -30,6 +30,7 @@ import { TrashIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
 import { clusterApiPath } from '../utils/clusterApi';
+import { OP_POLICY_MANAGED_ANNOTATION } from '../utils/operatorPolicySubscriptionRef';
 
 const COMPLIANCE_LEVELS: ComplianceLevel[] = ['Compliant', 'NonCompliant'];
 const REMOVAL_OPTIONS: RemovalBehaviorValue[] = [
@@ -68,6 +69,40 @@ function catalogNamespacesFromSources(catalogSources: CatalogSourceKind[]): stri
 
 function defaultMatchLabels(): MatchLabelRow[] {
   return [{ key: '', value: '' }];
+}
+
+/**
+ * Installed Operators / Overview treat a row as governance-managed when the Subscription has this
+ * annotation (ACM usually sets it; we set it here so the UI updates without waiting on the controller).
+ */
+async function patchSubscriptionOperatorPolicyManagedLink(options: {
+  clusterName: string;
+  subscriptionNamespace: string;
+  subscriptionName: string;
+  policyNamespace: string;
+  policyName: string;
+}): Promise<void> {
+  const {
+    clusterName,
+    subscriptionNamespace,
+    subscriptionName,
+    policyNamespace,
+    policyName,
+  } = options;
+  const subUrl = clusterApiPath(
+    clusterName,
+    `/apis/operators.coreos.com/v1alpha1/namespaces/${encodeURIComponent(subscriptionNamespace)}/subscriptions/${encodeURIComponent(subscriptionName)}`,
+  );
+  await consoleFetchJSON(subUrl, 'PATCH', {
+    headers: { 'Content-Type': 'application/merge-patch+json' },
+    body: JSON.stringify({
+      metadata: {
+        annotations: {
+          [OP_POLICY_MANAGED_ANNOTATION]: `${policyNamespace}/${policyName}`,
+        },
+      },
+    }),
+  });
 }
 
 export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = ({
@@ -392,26 +427,45 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
         ? `${base}/${encodeURIComponent(policyName.trim())}`
         : base;
 
+    const polNs = policyNamespace.trim();
+    const polNm = policyName.trim();
+    const subSpec = body.spec?.subscription;
+
     try {
       if (mode === 'create') {
         await consoleFetchJSON.post(url, body);
-        onSuccess?.(
-          t('policy_modal_success_created', {
-            namespace: policyNamespace.trim(),
-            name: policyName.trim(),
-            cluster: clusterName,
-          }),
-        );
       } else {
         await consoleFetchJSON.put(url, body);
-        onSuccess?.(
-          t('policy_modal_success_updated', {
-            namespace: policyNamespace.trim(),
-            name: policyName.trim(),
-            cluster: clusterName,
-          }),
-        );
       }
+
+      let successMsg =
+        mode === 'create'
+          ? t('policy_modal_success_created', {
+              namespace: polNs,
+              name: polNm,
+              cluster: clusterName,
+            })
+          : t('policy_modal_success_updated', {
+              namespace: polNs,
+              name: polNm,
+              cluster: clusterName,
+            });
+
+      if (subSpec?.name && subSpec?.namespace && polNs && polNm) {
+        try {
+          await patchSubscriptionOperatorPolicyManagedLink({
+            clusterName,
+            subscriptionNamespace: subSpec.namespace,
+            subscriptionName: subSpec.name,
+            policyNamespace: polNs,
+            policyName: polNm,
+          });
+        } catch (linkErr) {
+          successMsg = `${successMsg} ${t('policy_modal_warn_sub_link', { error: String(linkErr) })}`;
+        }
+      }
+
+      onSuccess?.(successMsg);
       onClose();
     } catch (e) {
       setSubmitError(String(e));

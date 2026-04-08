@@ -202,6 +202,7 @@
   "policy_modal_submit_err_sub_ns": "Subscription install namespace is required.",
   "policy_modal_success_created": "OperatorPolicy {{namespace}}/{{name}} created on cluster {{cluster}}.",
   "policy_modal_success_updated": "OperatorPolicy {{namespace}}/{{name}} updated on cluster {{cluster}}.",
+  "policy_modal_warn_sub_link": "OperatorPolicy was saved, but linking the Subscription (annotation operatorpolicy.policy.open-cluster-management.io/managed) failed: {{error}}. The console lists governance from that annotation—fix RBAC or set it manually on the Subscription until the ACM controller adds it.",
   "policy_modal_title_create": "Create OperatorPolicy",
   "policy_modal_title_edit": "Edit OperatorPolicy",
   "policy_modal_upgrade_automatic": "Automatic",
