@@ -29,6 +29,7 @@ import type {
 import { TrashIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
+import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
 import { OP_POLICY_MANAGED_ANNOTATION } from '../utils/operatorPolicySubscriptionRef';
 
@@ -103,6 +104,20 @@ async function patchSubscriptionOperatorPolicyManagedLink(options: {
       },
     }),
   });
+  try {
+    await consoleFetchJSON(subUrl, 'PATCH', {
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+      body: JSON.stringify({
+        metadata: {
+          labels: {
+            [SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL]: null,
+          },
+        },
+      }),
+    });
+  } catch {
+    /* Some API servers reject null to delete labels; annotation above is enough for the UI. */
+  }
 }
 
 export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = ({
