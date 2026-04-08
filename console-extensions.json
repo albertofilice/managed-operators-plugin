@@ -1,0 +1,50 @@
+[
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/multicloud/ecosystem/installed-operators",
+      "component": { "$codeRef": "MyCustomPage" },
+      "perspective": "acm"
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/multicloud/ecosystem/install-operators",
+      "component": { "$codeRef": "InstallOperatorsPage" },
+      "perspective": "acm"
+    }
+  },
+  {
+    "type": "console.navigation/section",
+    "properties": {
+      "id": "mce-ecosystem",
+      "perspective": "acm",
+      "name": "%plugin__managed-operators-plugin~Ecosystem%",
+      "insertAfter": "mce-infrastructure"
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "managed-operators-installed-operators",
+      "perspective": "acm",
+      "section": "mce-ecosystem",
+      "name": "%plugin__managed-operators-plugin~Installed Operators%",
+      "href": "/multicloud/ecosystem/installed-operators",
+      "startsWith": ["/multicloud/ecosystem/installed-operators"]
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "managed-operators-install-operators",
+      "perspective": "acm",
+      "section": "mce-ecosystem",
+      "name": "%plugin__managed-operators-plugin~Install operators%",
+      "href": "/multicloud/ecosystem/install-operators",
+      "startsWith": ["/multicloud/ecosystem/install-operators"],
+      "insertAfter": "managed-operators-installed-operators"
+    }
+  }
+]

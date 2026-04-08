@@ -1,0 +1,17 @@
+Console plugin {{ include "openshift-console-plugin.name" . }} has been deployed in namespace {{ .Release.Namespace }}.
+
+  ConsolePlugin name: {{ include "openshift-console-plugin.name" . }}
+  Service: {{ include "openshift-console-plugin.name" . }}:{{ .Values.plugin.port }}
+
+{{- if .Values.plugin.jobs.patchConsoles.enabled }}
+
+A post-install/upgrade Job was run to add this plugin to the cluster Console spec (if not already listed).
+Ensure the patcher ServiceAccount has permission to patch consoles.operator.openshift.io/cluster.
+{{- else }}
+
+Enable plugin.jobs.patchConsoles.enabled to run a Job that patches the cluster Console to load this plugin.
+{{- end }}
+
+Verify in the OpenShift console under Administration → Cluster Settings → Console plugins, or:
+
+  oc get consoleplugin {{ include "openshift-console-plugin.name" . }} -n {{ .Release.Namespace }}
