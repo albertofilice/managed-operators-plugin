@@ -194,6 +194,7 @@ Planned and under consideration. Contributions and design discussion are welcome
 
 ### Other ideas
 
+- **Multi-cluster / scale loading** — Page load time grows with the number of **managed clusters** and **Subscriptions** because work is largely **sequential proxy calls** per cluster (subscriptions, CSVs, catalog sources, policy lookups). Next steps: **parallelize** safe requests where possible, **list or batch** data per cluster instead of many narrow GETs, **cache** results for the session (or short TTL), and **progressive UI** (show partial data while the rest loads) so large estates stay usable. *Prototype:* branch `dev/scale-loading` — `usePluginPolicyEditableMap` lists **OperatorPolicies once per cluster** and uses **GET only** for refs missing from that list (same behavior, fewer round-trips when many subscriptions share policies or list coverage is sufficient).*
 - **Overview drill-down** — Click-through from chart segments and summary rows to **pre-filtered** Installed Operators or cluster-scoped views.
 - **Bulk / multi-cluster patterns** — Select several **Ready** clusters and apply the same install template (behind confirmations and RBAC checks).
 - **Stronger testing and docs** — Expand **Cypress** coverage for Overview and policy flows; document **RBAC** matrices and proxy requirements for managed clusters.

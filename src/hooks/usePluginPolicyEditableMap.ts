@@ -3,6 +3,7 @@ import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
 import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
 import { clusterApiPath } from '../utils/clusterApi';
+import { listOperatorPoliciesForCluster } from '../utils/listOperatorPolicies';
 import type { OperatorRow } from './useManagedClusterSubscriptions';
 
 export type PluginPolicyEditableMap = Record<string, boolean>;
@@ -13,8 +14,9 @@ function refKey(r: OperatorRow): string | null {
 }
 
 /**
- * For each subscription with an OperatorPolicy ref, GET the policy and check the plugin annotation.
- * Used to show "Edit policy" only when editable from this console.
+ * For each subscription with an OperatorPolicy ref, resolve the policy and check the plugin annotation.
+ * Loads policies with one list per managed cluster when possible, then GET only for refs missing from
+ * the list (other namespaces / RBAC). Used to show "Edit policy" only when editable from this console.
  * Policies without the annotation (hub Policy, YAML, GitOps, etc.) are "external" for this UI.
  */
 export function usePluginPolicyEditableMap(rows: OperatorRow[]): {
@@ -47,22 +49,55 @@ export function usePluginPolicyEditableMap(rows: OperatorRow[]): {
 
     (async () => {
       const next: PluginPolicyEditableMap = {};
+      const clusterKeys = new Set<string>();
+      for (const line of entries) {
+        const clusterKey = line.split('|')[0];
+        if (clusterKey) clusterKeys.add(clusterKey);
+      }
+
+      const policyPath = (namespace: string, name: string) =>
+        `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(namespace)}/operatorpolicies/${encodeURIComponent(name)}`;
+
+      const isPluginCreated = (policy: OperatorPolicyKind) =>
+        policy.metadata?.annotations?.[PLUGIN_CREATED_ANNOTATION] === 'true';
+
       await Promise.all(
-        entries.map(async (line) => {
-          const [clusterKey, namespace, name] = line.split('|');
-          if (!clusterKey || !namespace || !name) return;
-          try {
-            const url = clusterApiPath(
-              clusterKey,
-              `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(namespace)}/operatorpolicies/${encodeURIComponent(name)}`,
-            );
-            const policy = (await consoleFetchJSON(url, 'GET')) as OperatorPolicyKind;
-            next[line] = policy.metadata?.annotations?.[PLUGIN_CREATED_ANNOTATION] === 'true';
-          } catch {
-            next[line] = false;
+        [...clusterKeys].map(async (clusterKey) => {
+          const policies = await listOperatorPoliciesForCluster(clusterKey);
+          const byNsName = new Map<string, OperatorPolicyKind>();
+          for (const p of policies) {
+            const ns = p.metadata?.namespace;
+            const n = p.metadata?.name;
+            if (ns && n) byNsName.set(`${ns}|${n}`, p);
           }
+
+          const linesHere = entries.filter((line) => line.split('|')[0] === clusterKey);
+
+          await Promise.all(
+            linesHere.map(async (line) => {
+              const parts = line.split('|');
+              const namespace = parts[1];
+              const name = parts[2];
+              if (!namespace || !name) return;
+
+              const cached = byNsName.get(`${namespace}|${name}`);
+              if (cached) {
+                next[line] = isPluginCreated(cached);
+                return;
+              }
+
+              try {
+                const url = clusterApiPath(clusterKey, policyPath(namespace, name));
+                const policy = (await consoleFetchJSON(url, 'GET')) as OperatorPolicyKind;
+                next[line] = isPluginCreated(policy);
+              } catch {
+                next[line] = false;
+              }
+            }),
+          );
         }),
       );
+
       if (!cancelled) {
         setMap(next);
         setLoading(false);
