@@ -8,7 +8,9 @@ Dynamic console plugin for **Red Hat Advanced Cluster Management (RHACM)** / **m
 - **Installed Operators** (`/multicloud/ecosystem/installed-operators`): OLM **Subscriptions** for each cluster (hub and/or managed), CSV status, InstallPlan approval, **OperatorPolicy** references where present; **Edit policy** only when the `OperatorPolicy` was created from this plugin (annotation `console.openshift.io/managed-operators-plugin-created=true`). Policies reconciled from a hub **Policy**, GitOps, or YAML (no plugin annotation) are labeled **External** — change them via RHACM / GitOps, not **Uninstall** here (the subscription would be recreated). **Uninstall** is offered for governance-backed installs that are **not** external (e.g. created from this plugin’s flow), understanding the OperatorPolicy may still recreate the Subscription until the policy is removed or changed; **Migrate to OperatorPolicy** for manual OLM installs (opt-in label `managed-operators-plugin.openshift.io/enroll-operator-policy=true`, then create a matching policy from **Install operators** or automation).
 - **Install operators** (`/multicloud/ecosystem/install-operators`): guided install flow aligned with OperatorPolicy and catalogs.
 
-Navigation entries appear under **Ecosystem** in the ACM console (after **Infrastructure**).
+All three pages are registered in `console-extensions.json` (routes + **Ecosystem** nav). **Overview** is the first menu item and the natural entry point for the plugin; it ships with the same build as **Installed Operators** and **Install operators** once you deploy the plugin.
+
+Under **Fleet Management → Ecosystem** (after **Infrastructure**), the console lists **Overview**, then **Installed Operators**, then **Install operators**.
 
 ## Screenshots
 
