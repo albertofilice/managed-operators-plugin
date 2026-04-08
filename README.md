@@ -9,6 +9,28 @@ Dynamic console plugin for **Red Hat Advanced Cluster Management (RHACM)** / **m
 
 Navigation entries appear under **Ecosystem** in the ACM console (after **Infrastructure**).
 
+## Screenshots
+
+From the **Fleet Management → Ecosystem** menu in the ACM console.
+
+### Managed cluster operators (Installed Operators)
+
+OLM subscriptions per cluster, CSV phase, OperatorPolicy reference (with **External** when not created from this plugin).
+
+![Managed cluster operators: table with namespaces, subscriptions, OperatorPolicy, CSV](docs/images/installed-operators.png)
+
+### Install operators
+
+Choose a Ready cluster, filter **PackageManifests**, then **Install via OperatorPolicy** or edit an existing policy.
+
+![Install operators: cluster selector and catalog filters](docs/images/install-operators.png)
+
+### Create OperatorPolicy
+
+Modal to name the policy, namespaces, channel, and related OLM fields before create.
+
+![Create OperatorPolicy modal for a package](docs/images/create-operatorpolicy.png)
+
 ## Kubernetes APIs and MCE proxy
 
 Calls use `consoleFetchJSON` from the dynamic plugin SDK. Cluster API paths are built with `clusterApiPath()` in `src/utils/clusterApi.ts`:
