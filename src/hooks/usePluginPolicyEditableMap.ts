@@ -45,11 +45,14 @@ export function usePluginPolicyEditableMap(
   policyListCacheScope = 0,
 ): {
   loading: boolean;
-  canEditPlugin: (r: OperatorRow) => boolean;
+  // eslint-disable-next-line no-unused-vars
+  canEditPlugin: (_: OperatorRow) => boolean;
   /** OperatorPolicy exists on cluster but was not created from this plugin (e.g. hub `Policy` → reconciled OperatorPolicy). */
-  isExternalGovernancePolicy: (r: OperatorRow) => boolean;
+  // eslint-disable-next-line no-unused-vars
+  isExternalGovernancePolicy: (_: OperatorRow) => boolean;
   /** Policy spec uses remediation inform (observe-only until enforced elsewhere). */
-  isInformRemediation: (r: OperatorRow) => boolean;
+  // eslint-disable-next-line no-unused-vars
+  isInformRemediation: (_: OperatorRow) => boolean;
 } {
   const [map, setMap] = React.useState<PluginPolicyEditableMap>({});
 

@@ -28,5 +28,6 @@ export type SubscriptionKind = K8sResourceCommon & {
 export type SubscriptionList = {
   apiVersion: string;
   kind: 'SubscriptionList';
+  metadata?: { continue?: string };
   items: SubscriptionKind[];
 };

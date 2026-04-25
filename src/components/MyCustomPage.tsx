@@ -27,15 +27,11 @@ import {
   Title,
 } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import {
-  Table,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
-} from '@patternfly/react-table';
-import { useManagedClusterSubscriptions, type OperatorRow } from '../hooks/useManagedClusterSubscriptions';
+  useManagedClusterSubscriptions,
+  type OperatorRow,
+} from '../hooks/useManagedClusterSubscriptions';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
@@ -46,6 +42,7 @@ import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscrip
 import { clusterApiPath } from '../utils/clusterApi';
 import { MOP_Q } from '../utils/installOperatorsPrefill';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 
 /** Remove OperatorPolicy on the managed cluster when it was created from this plugin (stops governance from recreating the Subscription). */
 async function deletePluginOperatorPolicyIfPresent(
@@ -118,20 +115,24 @@ function CsvPhaseLabel({ succeeded, phase }: { succeeded: boolean; phase: string
 
 const MyCustomPage: React.FC = () => {
   const { t } = useTranslation('plugin__managed-operators-plugin');
-  const [clusters, clustersLoaded, clustersError] = useK8sWatchResource<ManagedClusterKind[]>(
-    managedClusterWatch,
-  );
+  const location = useLocation();
+  const [clusters, clustersLoaded, clustersError] =
+    useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
   const clusterNames = React.useMemo(() => {
     const list = Array.isArray(clusters) ? clusters : [];
-    return list.filter(clusterReady).map((c) => c.metadata?.name).filter(Boolean) as string[];
+    return list
+      .filter(clusterReady)
+      .map((c) => c.metadata?.name)
+      .filter(Boolean) as string[];
   }, [clusters]);
 
   const [subscriptionListEpoch, setSubscriptionListEpoch] = React.useState(0);
-  const { rows, loaded: subsLoaded, error: subsError } = useManagedClusterSubscriptions(
-    clusterNames,
-    subscriptionListEpoch,
-  );
+  const {
+    rows,
+    loaded: subsLoaded,
+    error: subsError,
+  } = useManagedClusterSubscriptions(clusterNames, subscriptionListEpoch);
 
   const {
     loading: pluginMetaLoading,
@@ -145,6 +146,20 @@ const MyCustomPage: React.FC = () => {
 
   const byCluster = React.useMemo(() => groupRowsByCluster(rows), [rows]);
   const clusterKeys = React.useMemo(() => [...byCluster.keys()].sort(), [byCluster]);
+
+  const drillClusterKey = React.useMemo(() => {
+    const q = new URLSearchParams(location.search);
+    const c = (q.get('cluster') ?? '').trim();
+    if (!c) return null;
+    if (c === '__hub_direct__') return 'Hub (current session)';
+    return c;
+  }, [location.search]);
+
+  const clusterKeysToShow = React.useMemo(() => {
+    if (!drillClusterKey) return clusterKeys;
+    if (clusterKeys.includes(drillClusterKey)) return [drillClusterKey];
+    return clusterKeys;
+  }, [clusterKeys, drillClusterKey]);
 
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
 
@@ -163,6 +178,10 @@ const MyCustomPage: React.FC = () => {
   const [migrateSubmitting, setMigrateSubmitting] = React.useState(false);
   const [migrateError, setMigrateError] = React.useState<string | null>(null);
 
+  const [approveRow, setApproveRow] = React.useState<OperatorRow | null>(null);
+  const [approveSubmitting, setApproveSubmitting] = React.useState(false);
+  const [approveError, setApproveError] = React.useState<string | null>(null);
+
   const { catalogSources, loadingCs, csError } = useClusterCatalogSources(
     editModalOpen && editClusterKey ? editClusterKey : undefined,
   );
@@ -172,12 +191,12 @@ const MyCustomPage: React.FC = () => {
       const next = { ...prev };
       for (const c of clusterKeys) {
         if (next[c] === undefined) {
-          next[c] = true;
+          next[c] = drillClusterKey ? c === drillClusterKey : true;
         }
       }
       return next;
     });
-  }, [clusterKeys]);
+  }, [clusterKeys, drillClusterKey]);
 
   const toggleCluster = (name: string) => {
     setExpanded((e) => ({ ...e, [name]: !(e[name] ?? true) }));
@@ -186,34 +205,37 @@ const MyCustomPage: React.FC = () => {
   const safeToggleId = (name: string) =>
     `managed-op-cluster-${name.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 
-  const openEditPolicy = React.useCallback(async (r: OperatorRow) => {
-    if (!r.operatorPolicyRef || !canEditPlugin(r)) return;
-    setEditSuccess(null);
-    setEditFetchError(null);
-    setEditPolicy(null);
-    const { namespace, name } = r.operatorPolicyRef;
-    setEditClusterKey(r.clusterKey);
-    setEditModalOpen(true);
-    setEditLoading(true);
-    try {
-      const url = clusterApiPath(
-        r.clusterKey,
-        `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(namespace)}/operatorpolicies/${encodeURIComponent(name)}`,
-      );
-      const policy = (await consoleFetchJSON(url, 'GET')) as OperatorPolicyKind;
-      if (policy.metadata?.annotations?.[PLUGIN_CREATED_ANNOTATION] !== 'true') {
-        setEditFetchError(t('installed_err_annotation_missing'));
-        setEditPolicy(null);
-      } else {
-        setEditPolicy(policy);
-      }
-    } catch (e) {
-      setEditFetchError(t('installed_err_load_policy', { error: String(e) }));
+  const openEditPolicy = React.useCallback(
+    async (r: OperatorRow) => {
+      if (!r.operatorPolicyRef || !canEditPlugin(r)) return;
+      setEditSuccess(null);
+      setEditFetchError(null);
       setEditPolicy(null);
-    } finally {
-      setEditLoading(false);
-    }
-  }, [canEditPlugin, t]);
+      const { namespace, name } = r.operatorPolicyRef;
+      setEditClusterKey(r.clusterKey);
+      setEditModalOpen(true);
+      setEditLoading(true);
+      try {
+        const url = clusterApiPath(
+          r.clusterKey,
+          `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(namespace)}/operatorpolicies/${encodeURIComponent(name)}`,
+        );
+        const policy = (await consoleFetchJSON(url, 'GET')) as OperatorPolicyKind;
+        if (policy.metadata?.annotations?.[PLUGIN_CREATED_ANNOTATION] !== 'true') {
+          setEditFetchError(t('installed_err_annotation_missing'));
+          setEditPolicy(null);
+        } else {
+          setEditPolicy(policy);
+        }
+      } catch (e) {
+        setEditFetchError(t('installed_err_load_policy', { error: String(e) }));
+        setEditPolicy(null);
+      } finally {
+        setEditLoading(false);
+      }
+    },
+    [canEditPlugin, t],
+  );
 
   const closeEditModal = () => {
     setEditModalOpen(false);
@@ -232,10 +254,21 @@ const MyCustomPage: React.FC = () => {
     setMigrateRow(r);
   }, []);
 
+  const openApprove = React.useCallback((r: OperatorRow) => {
+    setApproveError(null);
+    setApproveRow(r);
+  }, []);
+
   const closeMigrateModal = () => {
     if (migrateSubmitting) return;
     setMigrateRow(null);
     setMigrateError(null);
+  };
+
+  const closeApproveModal = () => {
+    if (approveSubmitting) return;
+    setApproveRow(null);
+    setApproveError(null);
   };
 
   const confirmApplyMigrationLabel = async () => {
@@ -262,9 +295,7 @@ const MyCustomPage: React.FC = () => {
       setMigrateRow(null);
       clearManagedOperatorsGetCache();
       setSubscriptionListEpoch((n) => n + 1);
-      setEditSuccess(
-        t('installed_migration_success', { namespace: refNs, name: refName }),
-      );
+      setEditSuccess(t('installed_migration_success', { namespace: refNs, name: refName }));
     } catch (e) {
       setMigrateError(String(e));
     } finally {
@@ -278,6 +309,39 @@ const MyCustomPage: React.FC = () => {
     setUninstallError(null);
   };
 
+  const confirmApproveInstallPlan = async () => {
+    if (!approveRow) return;
+    const row = approveRow;
+    const ip = row.installPlanRef;
+    if (!ip) return;
+    setApproveSubmitting(true);
+    setApproveError(null);
+    const url = clusterApiPath(
+      row.clusterKey,
+      `/apis/operators.coreos.com/v1alpha1/namespaces/${encodeURIComponent(ip.namespace)}/installplans/${encodeURIComponent(ip.name)}`,
+    );
+    try {
+      await consoleFetchJSON(url, 'PATCH', {
+        headers: { 'Content-Type': 'application/merge-patch+json' },
+        body: JSON.stringify({ spec: { approved: true } }),
+      });
+      setApproveRow(null);
+      clearManagedOperatorsGetCache();
+      setSubscriptionListEpoch((n) => n + 1);
+      setEditSuccess(
+        t('installed_approve_success', {
+          cluster: row.clusterDisplayName,
+          name: ip.name,
+          namespace: ip.namespace,
+        }),
+      );
+    } catch (e) {
+      setApproveError(String(e));
+    } finally {
+      setApproveSubmitting(false);
+    }
+  };
+
   const confirmUninstall = async () => {
     if (!uninstallRow) return;
     const row = uninstallRow;
@@ -286,7 +350,10 @@ const MyCustomPage: React.FC = () => {
     try {
       let removedPolicy = false;
       if (row.operatorPolicyRef) {
-        removedPolicy = await deletePluginOperatorPolicyIfPresent(row.clusterKey, row.operatorPolicyRef);
+        removedPolicy = await deletePluginOperatorPolicyIfPresent(
+          row.clusterKey,
+          row.operatorPolicyRef,
+        );
       }
       const subUrl = clusterApiPath(
         row.clusterKey,
@@ -347,7 +414,11 @@ const MyCustomPage: React.FC = () => {
             )}
 
             {loadError && (
-              <Alert className="pf-v6-u-mb-md" variant="warning" title={t('installed_alert_load_title')}>
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="warning"
+                title={t('installed_alert_load_title')}
+              >
                 {String(loadError)}
                 <p className="pf-v6-u-mt-sm">{t('installed_alert_load_body')}</p>
               </Alert>
@@ -378,7 +449,7 @@ const MyCustomPage: React.FC = () => {
 
             {loaded && rows.length > 0 && (
               <Accordion asDefinitionList={false} aria-label={t('installed_accordion_aria')}>
-                {clusterKeys.map((clusterDisplayName) => {
+                {clusterKeysToShow.map((clusterDisplayName) => {
                   const clusterRows = byCluster.get(clusterDisplayName) ?? [];
                   const tid = safeToggleId(clusterDisplayName);
                   const isExpanded = expanded[clusterDisplayName] ?? true;
@@ -395,14 +466,17 @@ const MyCustomPage: React.FC = () => {
                         aria-labelledby={tid}
                         isCustomContent={true}
                       >
-                        <div className="pf-v6-u-w-100" style={{ overflow: 'auto', maxWidth: '100%' }}>
-                            <Table
-                              aria-label={t('installed_table_aria_cluster', {
-                                cluster: clusterDisplayName,
-                              })}
-                              borders
-                              gridBreakPoint=""
-                            >
+                        <div
+                          className="pf-v6-u-w-100"
+                          style={{ overflow: 'auto', maxWidth: '100%' }}
+                        >
+                          <Table
+                            aria-label={t('installed_table_aria_cluster', {
+                              cluster: clusterDisplayName,
+                            })}
+                            borders
+                            gridBreakPoint=""
+                          >
                             <Thead>
                               <Tr>
                                 <Th>{t('installed_col_namespace')}</Th>
@@ -483,22 +557,41 @@ const MyCustomPage: React.FC = () => {
                                     </Td>
                                     <Td dataLabel={t('installed_col_version')}>{r.csvVersion}</Td>
                                     <Td dataLabel={t('installed_col_csv_phase')}>
-                                      <CsvPhaseLabel succeeded={r.csvSucceeded} phase={r.csvPhase} />
+                                      <CsvPhaseLabel
+                                        succeeded={r.csvSucceeded}
+                                        phase={r.csvPhase}
+                                      />
                                     </Td>
-                                    <Td dataLabel={t('installed_col_approval')}>{r.installPlanApproval}</Td>
+                                    <Td dataLabel={t('installed_col_approval')}>
+                                      {r.installPlanApproval}
+                                    </Td>
                                     <Td dataLabel={t('installed_col_sub_status')}>
                                       {r.subscriptionStateDisplay}
                                     </Td>
-                                    <Td dataLabel={t('installed_col_upgrade')}>{r.upgradePending ?? '—'}</Td>
+                                    <Td dataLabel={t('installed_col_upgrade')}>
+                                      {r.upgradePending ?? '—'}
+                                    </Td>
                                     <Td dataLabel={t('installed_col_actions')} modifier="nowrap">
                                       <div
                                         className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
                                         style={{ gap: 'var(--pf-t--global--spacer--md)' }}
                                       >
                                         {pluginMetaLoading && r.operatorPolicyRef ? (
-                                          <Spinner size="sm" aria-label={t('installed_spinner_policy_aria')} />
+                                          <Spinner
+                                            size="sm"
+                                            aria-label={t('installed_spinner_policy_aria')}
+                                          />
                                         ) : (
                                           <>
+                                            {r.installPlanApprovalRequired && r.installPlanRef && (
+                                              <Button
+                                                variant="primary"
+                                                size="sm"
+                                                onClick={() => openApprove(r)}
+                                              >
+                                                {t('installed_btn_approve_installplan')}
+                                              </Button>
+                                            )}
                                             {showEdit && (
                                               <Button
                                                 variant="secondary"
@@ -542,13 +635,24 @@ const MyCustomPage: React.FC = () => {
                                                           const q = new URLSearchParams();
                                                           q.set(MOP_Q.cluster, r.clusterKey);
                                                           q.set(MOP_Q.package, p.packageName);
-                                                          q.set(MOP_Q.subNs, p.subscriptionNamespace);
-                                                          if (p.channel) q.set(MOP_Q.channel, p.channel);
-                                                          if (p.source) q.set(MOP_Q.catalogSource, p.source);
+                                                          q.set(
+                                                            MOP_Q.subNs,
+                                                            p.subscriptionNamespace,
+                                                          );
+                                                          if (p.channel)
+                                                            q.set(MOP_Q.channel, p.channel);
+                                                          if (p.source)
+                                                            q.set(MOP_Q.catalogSource, p.source);
                                                           if (p.sourceNamespace) {
-                                                            q.set(MOP_Q.catalogSourceNs, p.sourceNamespace);
+                                                            q.set(
+                                                              MOP_Q.catalogSourceNs,
+                                                              p.sourceNamespace,
+                                                            );
                                                           }
-                                                          q.set(MOP_Q.approval, p.installPlanApproval);
+                                                          q.set(
+                                                            MOP_Q.approval,
+                                                            p.installPlanApproval,
+                                                          );
                                                           if (p.startingCSV) {
                                                             q.set(MOP_Q.startingCsv, p.startingCSV);
                                                           }
@@ -582,11 +686,45 @@ const MyCustomPage: React.FC = () => {
         </Card>
       </div>
 
-      <Modal
-        variant={ModalVariant.medium}
-        isOpen={Boolean(migrateRow)}
-        onClose={closeMigrateModal}
-      >
+      <Modal variant={ModalVariant.small} isOpen={Boolean(approveRow)} onClose={closeApproveModal}>
+        <ModalHeader title={t('installed_approve_modal_title')} />
+        <ModalBody>
+          {approveRow?.installPlanRef && (
+            <>
+              <p>
+                {t('installed_approve_modal_body', {
+                  installplan: `${approveRow.installPlanRef.namespace}/${approveRow.installPlanRef.name}`,
+                  cluster: approveRow.clusterDisplayName,
+                })}
+              </p>
+              {approveError && (
+                <Alert
+                  className="pf-v6-u-mt-md"
+                  variant="danger"
+                  isInline
+                  title={t('installed_modal_error_title')}
+                >
+                  {approveError}
+                </Alert>
+              )}
+            </>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="primary"
+            onClick={confirmApproveInstallPlan}
+            isDisabled={approveSubmitting || !approveRow?.installPlanRef}
+          >
+            {approveSubmitting ? t('installed_btn_approving') : t('installed_btn_approve')}
+          </Button>
+          <Button variant="link" onClick={closeApproveModal} isDisabled={approveSubmitting}>
+            {t('installed_btn_cancel')}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal variant={ModalVariant.medium} isOpen={Boolean(migrateRow)} onClose={closeMigrateModal}>
         <ModalHeader title={t('installed_migration_modal_title')} />
         <ModalBody>
           {migrateRow && (
@@ -594,7 +732,9 @@ const MyCustomPage: React.FC = () => {
               <p>{t('installed_migration_intro')}</p>
               <p className="pf-v6-u-font-size-sm pf-v6-u-mt-md">
                 {t('installed_migration_label_key')}{' '}
-                <code className="pf-v6-u-font-family-monospace">{SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL}</code>
+                <code className="pf-v6-u-font-family-monospace">
+                  {SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL}
+                </code>
                 <br />
                 {t('installed_migration_label_value')}{' '}
                 <code className="pf-v6-u-font-family-monospace">true</code>
@@ -715,11 +855,7 @@ const MyCustomPage: React.FC = () => {
 
       <OperatorPolicyFormModal
         key={editPolicy?.metadata?.uid ?? 'edit'}
-        isOpen={
-          editModalOpen &&
-          !editFetchError &&
-          (editLoading || Boolean(editPolicy))
-        }
+        isOpen={editModalOpen && !editFetchError && (editLoading || Boolean(editPolicy))}
         onClose={closeEditModal}
         mode="edit"
         clusterName={editClusterKey}

@@ -20,5 +20,10 @@ data:
         ssl_certificate     /var/cert/tls.crt;
         ssl_certificate_key /var/cert/tls.key;
         root                /usr/share/nginx/html;
+
+        location = /healthz {
+          default_type text/plain;
+          return 200 "ok\n";
+        }
       }
     }

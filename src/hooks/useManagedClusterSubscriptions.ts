@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
-import type { ClusterServiceVersionKind, InstallPlanKind, InstallPlanList } from '../types/olm';
-import type { SubscriptionKind, SubscriptionList } from '../types/subscription';
+import type { ClusterServiceVersionKind, InstallPlanKind } from '../types/olm';
+import type { SubscriptionKind } from '../types/subscription';
 import { clusterApiPath, HUB_SUBSCRIPTIONS_PATH } from '../utils/clusterApi';
 import {
   cachedConsoleFetchJson,
@@ -32,6 +32,10 @@ export type OperatorRow = {
   subscriptionStateDisplay: string;
   /** Human-readable pending upgrade / install plan info, or null if none detected */
   upgradePending: string | null;
+  /** InstallPlan detected for this subscription (namespace/name), if any. */
+  installPlanRef: { namespace: string; name: string } | null;
+  /** InstallPlan requires manual approval (spec.approval=Manual and spec.approved=false). */
+  installPlanApprovalRequired: boolean;
   /** Subscription annotation value or short label when OperatorPolicy-managed. */
   operatorPolicyManagedDisplay: string | null;
   /** Parsed ref for GET OperatorPolicy (namespace + name), if annotation is parseable. */
@@ -96,28 +100,37 @@ export function csvNameToVersion(csv?: string): string {
   return parts.slice(1).join('.');
 }
 
-async function fetchSubscriptionsForCluster(
-  clusterName: string,
-  refreshEpoch: number,
-): Promise<SubscriptionKind[]> {
-  if (clusterName === '__hub_direct__') {
+function appendQuery(url: string, params: Record<string, string>): string {
+  const sep = url.includes('?') ? '&' : '?';
+  const q = new URLSearchParams(params);
+  return `${url}${sep}${q.toString()}`;
+}
+
+async function* listPagedItems<TItem>(options: {
+  refreshEpoch: number;
+  baseUrl: string;
+  limit: number;
+}): AsyncGenerator<TItem[]> {
+  let cont = '';
+  while (true) {
+    const pageUrl = appendQuery(options.baseUrl, {
+      limit: String(options.limit),
+      ...(cont ? { continue: cont } : {}),
+    });
     const list = await cachedConsoleFetchJson(
-      subscriptionGetCacheKey(refreshEpoch, HUB_SUBSCRIPTIONS_PATH),
+      subscriptionGetCacheKey(options.refreshEpoch, pageUrl),
       MANAGED_OPERATORS_GET_CACHE_TTL_MS,
-      () => consoleFetchJSON(HUB_SUBSCRIPTIONS_PATH, 'GET') as Promise<SubscriptionList>,
+      () =>
+        consoleFetchJSON(pageUrl, 'GET') as Promise<{
+          items?: TItem[];
+          metadata?: { continue?: string };
+        }>,
     );
-    return list.items ?? [];
+    const items = list.items ?? [];
+    yield items;
+    cont = list.metadata?.continue ?? '';
+    if (!cont) break;
   }
-  const path = clusterApiPath(
-    clusterName,
-    '/apis/operators.coreos.com/v1alpha1/subscriptions',
-  );
-  const list = await cachedConsoleFetchJson(
-    subscriptionGetCacheKey(refreshEpoch, path),
-    MANAGED_OPERATORS_GET_CACHE_TTL_MS,
-    () => consoleFetchJSON(path, 'GET') as Promise<SubscriptionList>,
-  );
-  return list.items ?? [];
 }
 
 async function fetchInstallPlansForCluster(
@@ -125,13 +138,16 @@ async function fetchInstallPlansForCluster(
   refreshEpoch: number,
 ): Promise<InstallPlanKind[]> {
   try {
-    const path = clusterApiPath(clusterKey, '/apis/operators.coreos.com/v1alpha1/installplans');
-    const list = await cachedConsoleFetchJson(
-      subscriptionGetCacheKey(refreshEpoch, path),
-      MANAGED_OPERATORS_GET_CACHE_TTL_MS,
-      () => consoleFetchJSON(path, 'GET') as Promise<InstallPlanList>,
-    );
-    return list.items ?? [];
+    const baseUrl = clusterApiPath(clusterKey, '/apis/operators.coreos.com/v1alpha1/installplans');
+    const all: InstallPlanKind[] = [];
+    for await (const page of listPagedItems<InstallPlanKind>({
+      refreshEpoch,
+      baseUrl,
+      limit: 250,
+    })) {
+      all.push(...page);
+    }
+    return all;
   } catch {
     return [];
   }
@@ -158,6 +174,30 @@ async function fetchCsv(
   }
 }
 
+async function mapWithConcurrency<TIn>(
+  inputs: TIn[],
+  concurrency: number,
+  // eslint-disable-next-line no-unused-vars
+  mapper: (_input: TIn) => Promise<void>,
+  options?: { delayMs?: number },
+): Promise<void> {
+  const delayMs = Math.max(0, options?.delayMs ?? 0);
+  let idx = 0;
+  const workers = new Array(Math.max(1, Math.min(concurrency, inputs.length)))
+    .fill(null)
+    .map(async () => {
+      while (true) {
+        const cur = idx++;
+        if (cur >= inputs.length) return;
+        await mapper(inputs[cur]);
+        if (delayMs > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    });
+  await Promise.all(workers);
+}
+
 function installPlanForSubscription(
   sub: SubscriptionKind,
   plans: InstallPlanKind[],
@@ -169,7 +209,9 @@ function installPlanForSubscription(
   const byOwner = plans.find(
     (ip) =>
       ip.metadata?.namespace === ns &&
-      ip.metadata?.ownerReferences?.some((ref) => ref.kind === 'Subscription' && ref.name === subName),
+      ip.metadata?.ownerReferences?.some(
+        (ref) => ref.kind === 'Subscription' && ref.name === subName,
+      ),
   );
   if (byOwner) return byOwner;
 
@@ -205,15 +247,27 @@ function buildUpgradeMessage(
   return `InstallPlan ${ip.metadata?.name ?? '—'}: ${phase}${manual}`;
 }
 
-async function enrichSubscriptionsForCluster(
-  clusterKey: string,
-  displayName: string,
-  subs: SubscriptionKind[],
-  refreshEpoch: number,
-): Promise<OperatorRow[]> {
-  const [installPlans] = await Promise.all([
-    fetchInstallPlansForCluster(clusterKey, refreshEpoch),
-  ]);
+function installPlanRef(
+  ip: InstallPlanKind | undefined,
+): { namespace: string; name: string } | null {
+  const name = ip?.metadata?.name;
+  const namespace = ip?.metadata?.namespace;
+  if (!name || !namespace) return null;
+  return { namespace, name };
+}
+
+function installPlanNeedsApproval(ip: InstallPlanKind | undefined): boolean {
+  return ip?.spec?.approval === 'Manual' && ip?.spec?.approved === false;
+}
+
+async function enrichSubscriptionsWithInstallPlans(options: {
+  clusterKey: string;
+  displayName: string;
+  subs: SubscriptionKind[];
+  installPlans: InstallPlanKind[];
+  refreshEpoch: number;
+}): Promise<OperatorRow[]> {
+  const { clusterKey, displayName, subs, installPlans, refreshEpoch } = options;
 
   const csvKeys = new Map<string, { ns: string; csv: string }>();
   for (const sub of subs) {
@@ -225,11 +279,15 @@ async function enrichSubscriptionsForCluster(
   }
 
   const csvMap = new Map<string, ClusterServiceVersionKind | null>();
-  await Promise.all(
-    [...csvKeys.entries()].map(async ([key, { ns, csv }]) => {
+  const csvEntries = [...csvKeys.entries()];
+  await mapWithConcurrency(
+    csvEntries,
+    10,
+    async ([key, { ns, csv }]) => {
       const data = await fetchCsv(clusterKey, ns, csv, refreshEpoch);
       csvMap.set(key, data);
-    }),
+    },
+    { delayMs: 40 },
   );
 
   return subs.map((sub) => {
@@ -245,6 +303,8 @@ async function enrichSubscriptionsForCluster(
 
     const ip = installPlanForSubscription(sub, installPlans);
     const upgradePending = buildUpgradeMessage(sub, ip);
+    const ipRef = installPlanRef(ip);
+    const installPlanApprovalRequired = installPlanNeedsApproval(ip);
 
     const rawSubState = sub.status?.state;
     const subscriptionStateDisplay = formatSubscriptionStateDisplay(
@@ -272,8 +332,7 @@ async function enrichSubscriptionsForCluster(
     const subChannel = (sub.spec?.channel ?? '').trim();
     const subSource = (sub.spec?.source ?? '').trim();
     const subSourceNs = (sub.spec?.sourceNamespace ?? '').trim();
-    const prefillApproval: 'Automatic' | 'Manual' =
-      approval === 'Manual' ? 'Manual' : 'Automatic';
+    const prefillApproval: 'Automatic' | 'Manual' = approval === 'Manual' ? 'Manual' : 'Automatic';
     const installPrefillQuery =
       pkgSpecName && ns !== '—' && name !== '—'
         ? {
@@ -299,6 +358,8 @@ async function enrichSubscriptionsForCluster(
       csvSucceeded,
       subscriptionStateDisplay,
       upgradePending,
+      installPlanRef: ipRef,
+      installPlanApprovalRequired,
       operatorPolicyManagedDisplay,
       operatorPolicyRef: ref,
       policyGovernanceManaged,
@@ -318,57 +379,84 @@ export function useManagedClusterSubscriptions(clusterNames: string[], refreshEp
   const [loaded, setLoaded] = React.useState(false);
   const [error, setError] = React.useState<unknown>();
 
-  const key = `${clusterNames.join('\0')}\0${refreshEpoch}`;
+  const namesSorted = React.useMemo(
+    () => (clusterNames.length > 0 ? [...clusterNames].sort() : ['__hub_direct__']),
+    [clusterNames],
+  );
 
   React.useEffect(() => {
     let cancelled = false;
 
-    const names =
-      clusterNames.length > 0 ? [...clusterNames].sort() : ['__hub_direct__'];
-
     setLoaded(false);
     setError(undefined);
+    setRows([]);
 
     const epoch = refreshEpoch;
 
     (async () => {
-      const results = await Promise.allSettled(
-        names.map(async (clusterKey) => {
-          const subs = await fetchSubscriptionsForCluster(clusterKey, epoch);
-          const displayName = displayClusterName(clusterKey);
-          return enrichSubscriptionsForCluster(clusterKey, displayName, subs, epoch);
-        }),
-      );
-      if (cancelled) return;
-
       const next: OperatorRow[] = [];
       const errors: unknown[] = [];
 
-      results.forEach((result) => {
-        if (result.status === 'rejected') {
-          errors.push(result.reason);
-          return;
+      const sortRows = (rowsToSort: OperatorRow[]) => {
+        rowsToSort.sort(
+          (a, b) =>
+            a.clusterDisplayName.localeCompare(b.clusterDisplayName) ||
+            a.namespace.localeCompare(b.namespace) ||
+            a.name.localeCompare(b.name),
+        );
+      };
+
+      const work = namesSorted.map(async (clusterKey) => {
+        const displayName = displayClusterName(clusterKey);
+
+        const installPlans = await fetchInstallPlansForCluster(clusterKey, epoch);
+
+        const baseUrl =
+          clusterKey === '__hub_direct__'
+            ? HUB_SUBSCRIPTIONS_PATH
+            : clusterApiPath(clusterKey, '/apis/operators.coreos.com/v1alpha1/subscriptions');
+
+        const limit = 250;
+        for await (const subsPage of listPagedItems<SubscriptionKind>({
+          refreshEpoch: epoch,
+          baseUrl,
+          limit,
+        })) {
+          const pageRows = await enrichSubscriptionsWithInstallPlans({
+            clusterKey,
+            displayName,
+            subs: subsPage,
+            installPlans,
+            refreshEpoch: epoch,
+          });
+
+          if (cancelled) return;
+          next.push(...pageRows);
+          sortRows(next);
+          setRows([...next]);
         }
-        next.push(...result.value);
       });
 
-      next.sort(
-        (a, b) =>
-          a.clusterDisplayName.localeCompare(b.clusterDisplayName) ||
-          a.namespace.localeCompare(b.namespace) ||
-          a.name.localeCompare(b.name),
+      await Promise.all(
+        work.map((p) =>
+          p
+            .then(() => undefined)
+            .catch((e) => {
+              if (cancelled) return;
+              errors.push(e);
+              if (errors.length === 1) setError(e);
+            }),
+        ),
       );
-      setRows(next);
-      if (errors.length > 0) {
-        setError(errors[0]);
-      }
+
+      if (cancelled) return;
       setLoaded(true);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [key]);
+  }, [namesSorted, refreshEpoch]);
 
   return { rows, loaded, error };
 }

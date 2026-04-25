@@ -33,6 +33,28 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.plugin.resources | nindent 12 }}
+          {{- if .Values.plugin.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: {{ .Values.plugin.probes.readiness.path | quote }}
+              port: {{ .Values.plugin.port }}
+            initialDelaySeconds: {{ .Values.plugin.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.plugin.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.plugin.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.plugin.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.plugin.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: {{ .Values.plugin.probes.liveness.path | quote }}
+              port: {{ .Values.plugin.port }}
+            initialDelaySeconds: {{ .Values.plugin.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.plugin.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.plugin.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.plugin.probes.liveness.failureThreshold }}
+          {{- end }}
           volumeMounts:
             - name: {{ template "openshift-console-plugin.certificateSecret" . }}
               readOnly: true

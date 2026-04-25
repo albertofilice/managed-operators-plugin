@@ -31,5 +31,6 @@ export type InstallPlanKind = K8sResourceCommon & {
 export type InstallPlanList = {
   apiVersion: string;
   kind: 'InstallPlanList';
+  metadata?: { continue?: string };
   items: InstallPlanKind[];
 };

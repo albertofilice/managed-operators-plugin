@@ -26,6 +26,7 @@ spec:
       containers:
         - name: {{ template "openshift-console-plugin.patcherName" . }}
           image: {{ required "Patcher image must be specified!" .Values.plugin.jobs.patchConsoles.image }}
+          imagePullPolicy: {{ .Values.plugin.jobs.patchConsoles.imagePullPolicy }}
           {{- if and (.Values.plugin.securityContext.enabled) (.Values.plugin.jobs.patchConsoles.containerSecurityContext.enabled) }}
           securityContext: {{ tpl (toYaml (omit .Values.plugin.jobs.patchConsoles.containerSecurityContext "enabled")) $ | nindent 12 }}
           {{- end }}

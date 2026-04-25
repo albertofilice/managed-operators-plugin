@@ -39,7 +39,12 @@ export async function listOperatorPoliciesForCluster(
   const bypassCache = options?.bypassCache ?? false;
 
   try {
-    const list = await fetchPolicyList(clusterKey, `${GROUP}/operatorpolicies`, listScope, bypassCache);
+    const list = await fetchPolicyList(
+      clusterKey,
+      `${GROUP}/operatorpolicies`,
+      listScope,
+      bypassCache,
+    );
     if (list.items?.length) {
       return dedupeByUid(list.items);
     }

@@ -2,12 +2,7 @@ import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
 
 export type ComplianceLevel = 'Compliant' | 'NonCompliant';
 
-export type RemovalBehaviorValue =
-  | 'Delete'
-  | 'Keep'
-  | 'DeleteIfUnused'
-  | 'Retain'
-  | 'Prune';
+export type RemovalBehaviorValue = 'Delete' | 'Keep' | 'DeleteIfUnused' | 'Retain' | 'Prune';
 
 /** RHACM governance — see https://developers.redhat.com/articles/2024/08/08/getting-started-operatorpolicy */
 export type OperatorPolicyKind = K8sResourceCommon & {
