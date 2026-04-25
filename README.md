@@ -27,7 +27,6 @@ Dashboard with **ChartDonut** cards (CSV phase, upgrades, governance, policy ref
 OLM subscriptions per cluster, CSV phase, OperatorPolicy reference (with **External** when not created from this plugin).
 
 ![Managed cluster operators: table with namespaces, subscriptions, OperatorPolicy, CSV](docs/images/installed-operators.png)
-<img width="1512" height="830" alt="image" src="https://github.com/user-attachments/assets/dc74c575-78de-4769-b25c-02697d9f3736" />
 
 
 ### Install operators
@@ -208,13 +207,8 @@ Planned and under consideration. Contributions and design discussion are welcome
 
 ### Other ideas
 
-- **Migration → Create policy** — From **Installed Operators**, after the enroll label is applied, **Create policy** opens **Install operators** with query params so the modal is **pre-filled** from the live **Subscription** (namespace, channel, catalog source, approval → policy upgrade mode, starting CSV, policy namespace). *Shipped in current plugin (deep link `mop_*` query params).*
-- **YAML tab on install / edit** — Besides the guided form, add a **read/write YAML** tab when installing or editing an **OperatorPolicy** (and related objects where applicable), for power users and copy-paste from docs. *Shipped in current plugin.*
-- **Generate-only YAML (GitOps-first)** — A flow that **only emits** ready-to-commit manifests (e.g. `OperatorPolicy`, namespaces, labels) for **Git** / **Argo CD** / **RHACM Policy** repos, without applying through the console—useful for teams that forbid direct cluster edits. *Shipped in current plugin.*
-- **Multi-cluster / scale loading** — Page load time grows with the number of **managed clusters** and **Subscriptions** because work is largely **sequential proxy calls** per cluster (subscriptions, CSVs, catalog sources, policy lookups). Next steps: **parallelize** safe requests where possible, **list or batch** data per cluster instead of many narrow GETs, **cache** results for the session (or short TTL), and **progressive UI** (show partial data while the rest loads) so large estates stay usable. *Shipped in current plugin (progressive loading + short TTL cache + policy list batching).*
-- **Overview drill-down** — Click-through from summary rows to **cluster-scoped** Installed Operators views. *Shipped in current plugin (per-cluster link).*
-- **InstallPlan manual approval** — When **install plan approval** is **Manual** and an **InstallPlan** tied to the subscription is waiting (`spec.approved: false`), show an **Approve** button on **Installed Operators** (and optional confirmation). Implement as **merge-patch** on `InstallPlan` (`spec.approved: true`) via the same **managed-cluster proxy** path, handle **RBAC** errors in-line, then **refresh** subscription / CSV data for that row. *Shipped in current plugin.*
 - **Bulk / multi-cluster patterns** — Select several **Ready** clusters and apply the same install template (behind confirmations and RBAC checks).
+- **Overview drill-down (charts + filters)** — Click-through from donut segments / summary lines to pre-filtered views (e.g. pending upgrades, external policies).
 - **Stronger testing and docs** — Expand **Cypress** coverage for Overview and policy flows; document **RBAC** matrices and proxy requirements for managed clusters.
 - **More locales** — Additional language packs beyond `en` once strings stabilize.
 
