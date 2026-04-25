@@ -35,6 +35,12 @@ Choose a Ready cluster, filter **PackageManifests**, then **Install via Operator
 
 ![Install operators: cluster selector and catalog filters](docs/images/install-operators.png)
 
+### Generate YAML (GitOps-first)
+
+Generate an OperatorPolicy manifest without applying it to the cluster.
+
+![Generate YAML: OperatorPolicy modal YAML tab](docs/images/generate-yaml.png)
+
 ### Create OperatorPolicy
 
 Modal to name the policy, namespaces, channel, and related OLM fields before create.
