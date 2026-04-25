@@ -20,14 +20,8 @@ import {
   TextInput,
   Title,
 } from '@patternfly/react-core';
-import {
-  Table,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
-} from '@patternfly/react-table';
+import { CodeIcon } from '@patternfly/react-icons';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useHistory, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { PackageManifestKind, PackageManifestList } from '../types/packageManifest';
@@ -102,7 +96,10 @@ const InstallOperatorsPage: React.FC = () => {
 
   const clusterNames = React.useMemo(() => {
     const list = Array.isArray(clusters) ? clusters : [];
-    return list.filter(clusterReady).map((c) => c.metadata?.name).filter(Boolean) as string[];
+    return list
+      .filter(clusterReady)
+      .map((c) => c.metadata?.name)
+      .filter(Boolean) as string[];
   }, [clusters]);
 
   const [selectedCluster, setSelectedCluster] = React.useState('');
@@ -122,12 +119,12 @@ const InstallOperatorsPage: React.FC = () => {
 
   const [modalOpen, setModalOpen] = React.useState(false);
   const [modalMode, setModalMode] = React.useState<'create' | 'edit'>('create');
+  const [modalGenerateOnly, setModalGenerateOnly] = React.useState(false);
   const [selectedPkg, setSelectedPkg] = React.useState<PackageManifestKind | null>(null);
   const [editPolicy, setEditPolicy] = React.useState<OperatorPolicyKind | null>(null);
   const [submitOk, setSubmitOk] = React.useState<string | null>(null);
-  const [migrationPrefill, setMigrationPrefill] = React.useState<OperatorPolicySubscriptionPrefill | null>(
-    null,
-  );
+  const [migrationPrefill, setMigrationPrefill] =
+    React.useState<OperatorPolicySubscriptionPrefill | null>(null);
 
   const urlPrefill = React.useMemo(
     () => parseInstallOperatorsPrefill(location.search),
@@ -292,6 +289,7 @@ const InstallOperatorsPage: React.FC = () => {
     const matches = pluginPoliciesMatchingPackage(pm, clusterPolicies);
     setSubmitOk(null);
     setMigrationPrefill(null);
+    setModalGenerateOnly(false);
     setSelectedPkg(pm);
     if (matches.length === 1) {
       setModalMode('edit');
@@ -306,11 +304,22 @@ const InstallOperatorsPage: React.FC = () => {
     setModalOpen(true);
   };
 
+  const openGenerateYaml = (pm: PackageManifestKind) => {
+    setSubmitOk(null);
+    setMigrationPrefill(null);
+    setModalGenerateOnly(true);
+    setSelectedPkg(pm);
+    setModalMode('create');
+    setEditPolicy(null);
+    setModalOpen(true);
+  };
+
   const closeModal = () => {
     setModalOpen(false);
     setEditPolicy(null);
     setModalMode('create');
     setMigrationPrefill(null);
+    setModalGenerateOnly(false);
   };
 
   return (
@@ -428,7 +437,7 @@ const InstallOperatorsPage: React.FC = () => {
 
             {selectedCluster && !loadingPm && !pmError && filtered.length > 0 && (
               <div className="pf-v6-u-w-100" style={{ overflow: 'auto', maxWidth: '100%' }}>
-                  <Table aria-label={t('install_table_aria')} borders gridBreakPoint="">
+                <Table aria-label={t('install_table_aria')} borders gridBreakPoint="">
                   <Thead>
                     <Tr>
                       <Th>{t('install_col_package')}</Th>
@@ -446,12 +455,18 @@ const InstallOperatorsPage: React.FC = () => {
                       return (
                         <Tr key={packageRowKey(pm)}>
                           <Td dataLabel={t('install_col_package')}>
-                            <span className="pf-v6-u-font-family-monospace">{pm.metadata?.name}</span>
+                            <span className="pf-v6-u-font-family-monospace">
+                              {pm.metadata?.name}
+                            </span>
                           </Td>
                           <Td dataLabel={t('install_col_catalog')}>
-                            <span className="pf-v6-u-font-family-monospace">{packageCatalogLabel(pm)}</span>
+                            <span className="pf-v6-u-font-family-monospace">
+                              {packageCatalogLabel(pm)}
+                            </span>
                           </Td>
-                          <Td dataLabel={t('install_col_provider')}>{pm.status?.provider?.name ?? '—'}</Td>
+                          <Td dataLabel={t('install_col_provider')}>
+                            {pm.status?.provider?.name ?? '—'}
+                          </Td>
                           <Td dataLabel={t('install_col_channels')}>{defaultChannels(pm)}</Td>
                           <Td dataLabel={t('install_col_actions')} modifier="fitContent">
                             {conflict && (
@@ -462,13 +477,32 @@ const InstallOperatorsPage: React.FC = () => {
                                 {t('install_conflict_badge')}
                               </span>
                             )}
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => openInstallOrEdit(pm)}
+                            <span
+                              className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
+                              style={{ columnGap: 'var(--pf-t--global--spacer--md)' }}
                             >
-                              {hasPlugin ? t('install_btn_edit_policy') : t('install_btn_install')}
-                            </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => openInstallOrEdit(pm)}
+                                className="pf-v6-u-white-space-nowrap"
+                              >
+                                {hasPlugin
+                                  ? t('install_btn_edit_policy')
+                                  : t('install_btn_install')}
+                              </Button>
+                              {!hasPlugin && (
+                                <Button
+                                  variant="tertiary"
+                                  size="sm"
+                                  onClick={() => openGenerateYaml(pm)}
+                                  icon={<CodeIcon />}
+                                  className="pf-v6-u-white-space-nowrap"
+                                >
+                                  {t('install_btn_generate_yaml')}
+                                </Button>
+                              )}
+                            </span>
                           </Td>
                         </Tr>
                       );
@@ -479,7 +513,12 @@ const InstallOperatorsPage: React.FC = () => {
             )}
 
             {submitOk && (
-              <Alert className="pf-v6-u-mt-md" variant="success" isInline title={t('install_alert_success_title')}>
+              <Alert
+                className="pf-v6-u-mt-md"
+                variant="success"
+                isInline
+                title={t('install_alert_success_title')}
+              >
                 {submitOk}
               </Alert>
             )}
@@ -498,6 +537,7 @@ const InstallOperatorsPage: React.FC = () => {
         isOpen={modalOpen}
         onClose={closeModal}
         mode={modalMode}
+        generateOnly={modalGenerateOnly}
         clusterName={selectedCluster}
         selectedPkg={modalMode === 'create' ? selectedPkg : null}
         catalogSources={catalogSources}

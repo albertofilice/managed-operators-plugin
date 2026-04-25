@@ -7,7 +7,7 @@ export const isLocalDevEnvironment = Cypress.config('baseUrl')!.includes('localh
 
 const installHelmChart = (helmBin: string) => {
   cy.exec(
-    `helm upgrade -i ${PLUGIN_NAME} ../charts/openshift-console-plugin -n ${PLUGIN_NAME} --create-namespace --set plugin.image=${PLUGIN_PULL_SPEC} --set plugin.name=${PLUGIN_NAME}`,
+    `${helmBin} upgrade -i ${PLUGIN_NAME} ../charts/openshift-console-plugin -n ${PLUGIN_NAME} --create-namespace --set plugin.image=${PLUGIN_PULL_SPEC} --set plugin.name=${PLUGIN_NAME}`,
     {
       failOnNonZeroExit: false,
     },
@@ -31,9 +31,12 @@ const installHelmChart = (helmBin: string) => {
 };
 
 const deleteHelmChart = (helmBin: string) => {
-  cy.exec(`helm uninstall ${PLUGIN_NAME} -n ${PLUGIN_NAME} && oc delete namespace ${PLUGIN_NAME}`, {
-    failOnNonZeroExit: false,
-  }).then((result) => {
+  cy.exec(
+    `${helmBin} uninstall ${PLUGIN_NAME} -n ${PLUGIN_NAME} && oc delete namespace ${PLUGIN_NAME}`,
+    {
+      failOnNonZeroExit: false,
+    },
+  ).then((result) => {
     cy.log('Error uninstalling helm chart: ', result.stderr);
     cy.log('Successfully uninstalled helm chart: ', result.stdout);
   });
@@ -69,5 +72,10 @@ describe('Managed operators plugin', () => {
   it('shows the installed operators page (requires RHACM and ACM perspective)', () => {
     cy.visit('/multicloud/ecosystem/installed-operators');
     cy.get('title', { timeout: 120000 }).should('contain', 'Managed cluster operators');
+  });
+
+  it('shows the install operators page (requires RHACM and ACM perspective)', () => {
+    cy.visit('/multicloud/ecosystem/install-operators');
+    cy.get('title', { timeout: 120000 }).should('contain', 'Install operators');
   });
 });

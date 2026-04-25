@@ -10,10 +10,6 @@ import {
   Card,
   CardBody,
   CardTitle,
-  DescriptionList,
-  DescriptionListDescription,
-  DescriptionListGroup,
-  DescriptionListTerm,
   Grid,
   GridItem,
   Spinner,
@@ -21,7 +17,10 @@ import {
 } from '@patternfly/react-core';
 import { ChartDonut, ChartThemeColor } from '@patternfly/react-charts';
 import { useTranslation } from 'react-i18next';
-import { useManagedClusterSubscriptions, type OperatorRow } from '../hooks/useManagedClusterSubscriptions';
+import {
+  useManagedClusterSubscriptions,
+  type OperatorRow,
+} from '../hooks/useManagedClusterSubscriptions';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
 
 type ManagedClusterKind = K8sResourceCommon & {
@@ -112,18 +111,27 @@ function OverviewDonut({
 
 export function OperatorsOverviewPage(): React.ReactElement {
   const { t } = useTranslation('plugin__managed-operators-plugin');
-  const [clusters, clustersLoaded, clustersError] = useK8sWatchResource<ManagedClusterKind[]>(
-    managedClusterWatch,
-  );
+  const [clusters, clustersLoaded, clustersError] =
+    useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
   const clusterNames = React.useMemo(() => {
     const list = Array.isArray(clusters) ? clusters : [];
-    return list.filter(clusterReady).map((c) => c.metadata?.name).filter(Boolean) as string[];
+    return list
+      .filter(clusterReady)
+      .map((c) => c.metadata?.name)
+      .filter(Boolean) as string[];
   }, [clusters]);
 
-  const { rows, loaded: subsLoaded, error: subsError } = useManagedClusterSubscriptions(clusterNames);
-  const { loading: pluginMetaLoading, canEditPlugin, isExternalGovernancePolicy } =
-    usePluginPolicyEditableMap(rows);
+  const {
+    rows,
+    loaded: subsLoaded,
+    error: subsError,
+  } = useManagedClusterSubscriptions(clusterNames);
+  const {
+    loading: pluginMetaLoading,
+    canEditPlugin,
+    isExternalGovernancePolicy,
+  } = usePluginPolicyEditableMap(rows);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
@@ -138,7 +146,9 @@ export function OperatorsOverviewPage(): React.ReactElement {
     const standalone = total - gov;
     const withRef = rows.filter((r) => r.operatorPolicyRef).length;
     const withoutRef = total - withRef;
-    const external = rows.filter((r) => r.operatorPolicyRef && isExternalGovernancePolicy(r)).length;
+    const external = rows.filter(
+      (r) => r.operatorPolicyRef && isExternalGovernancePolicy(r),
+    ).length;
     const pluginManaged = rows.filter((r) => canEditPlugin(r)).length;
     return {
       total,
@@ -158,6 +168,9 @@ export function OperatorsOverviewPage(): React.ReactElement {
   const byCluster = React.useMemo(() => groupRowsByCluster(rows), [rows]);
   const clusterKeys = React.useMemo(() => [...byCluster.keys()].sort(), [byCluster]);
 
+  const overviewRowClass =
+    'pf-v6-u-display-flex pf-v6-u-justify-content-space-between pf-v6-u-align-items-center pf-v6-u-py-sm';
+
   return (
     <div data-test="managed-operators-overview">
       <DocumentTitle>{t('overview_document_title')}</DocumentTitle>
@@ -165,11 +178,21 @@ export function OperatorsOverviewPage(): React.ReactElement {
         <Title headingLevel="h1">{t('overview_heading')}</Title>
         <p className="pf-v6-u-mt-sm pf-v6-u-text-color-subtle">{t('overview_intro')}</p>
         <div className="pf-v6-u-mt-md">
-          <Button variant="link" isInline component="a" href="/multicloud/ecosystem/installed-operators">
+          <Button
+            variant="link"
+            isInline
+            component="a"
+            href="/multicloud/ecosystem/installed-operators"
+          >
             {t('Installed Operators')}
           </Button>
           <span className="pf-v6-u-mx-sm pf-v6-u-text-color-subtle">·</span>
-          <Button variant="link" isInline component="a" href="/multicloud/ecosystem/install-operators">
+          <Button
+            variant="link"
+            isInline
+            component="a"
+            href="/multicloud/ecosystem/install-operators"
+          >
             {t('Install operators')}
           </Button>
         </div>
@@ -184,9 +207,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
 
         {loadError && (
           <Card className="managed-operators-plugin__overview-card">
-            <CardBody>
-              {t('overview_load_error', { error: String(loadError) })}
-            </CardBody>
+            <CardBody>{t('overview_load_error', { error: String(loadError) })}</CardBody>
           </Card>
         )}
 
@@ -252,28 +273,66 @@ export function OperatorsOverviewPage(): React.ReactElement {
                 <Card className="managed-operators-plugin__overview-card" isCompact>
                   <CardTitle>{t('overview_summary_title')}</CardTitle>
                   <CardBody>
-                    <DescriptionList>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>{t('overview_ready_clusters')}</DescriptionListTerm>
-                        <DescriptionListDescription>{clusterNames.length}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>{t('overview_subscriptions_rows')}</DescriptionListTerm>
-                        <DescriptionListDescription>{stats.total}</DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>{t('overview_policy_external')}</DescriptionListTerm>
-                        <DescriptionListDescription>
-                          {pluginMetaLoading ? t('overview_loading_ellipsis') : stats.external}
-                        </DescriptionListDescription>
-                      </DescriptionListGroup>
-                      <DescriptionListGroup>
-                        <DescriptionListTerm>{t('overview_policy_plugin')}</DescriptionListTerm>
-                        <DescriptionListDescription>
-                          {pluginMetaLoading ? t('overview_loading_ellipsis') : stats.pluginManaged}
-                        </DescriptionListDescription>
-                      </DescriptionListGroup>
-                    </DescriptionList>
+                    <div className={overviewRowClass}>
+                      <span>{t('overview_ready_clusters')}</span>
+                      <Button
+                        variant="link"
+                        isInline
+                        component="a"
+                        href="/multicloud/ecosystem/installed-operators"
+                        className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
+                      >
+                        {clusterNames.length}
+                      </Button>
+                    </div>
+                    <div className={overviewRowClass}>
+                      <span>{t('overview_subscriptions_rows')}</span>
+                      <Button
+                        variant="link"
+                        isInline
+                        component="a"
+                        href="/multicloud/ecosystem/installed-operators"
+                        className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
+                      >
+                        {stats.total}
+                      </Button>
+                    </div>
+                    <div className={overviewRowClass}>
+                      <span>{t('overview_policy_external')}</span>
+                      {pluginMetaLoading ? (
+                        <span className="pf-v6-u-text-color-subtle">
+                          {t('overview_loading_ellipsis')}
+                        </span>
+                      ) : (
+                        <Button
+                          variant="link"
+                          isInline
+                          component="a"
+                          href="/multicloud/ecosystem/installed-operators"
+                          className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
+                        >
+                          {stats.external}
+                        </Button>
+                      )}
+                    </div>
+                    <div className={overviewRowClass}>
+                      <span>{t('overview_policy_plugin')}</span>
+                      {pluginMetaLoading ? (
+                        <span className="pf-v6-u-text-color-subtle">
+                          {t('overview_loading_ellipsis')}
+                        </span>
+                      ) : (
+                        <Button
+                          variant="link"
+                          isInline
+                          component="a"
+                          href="/multicloud/ecosystem/installed-operators"
+                          className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
+                        >
+                          {stats.pluginManaged}
+                        </Button>
+                      )}
+                    </div>
                   </CardBody>
                 </Card>
               </GridItem>
@@ -286,18 +345,29 @@ export function OperatorsOverviewPage(): React.ReactElement {
                         {t('overview_no_subscription_rows')}
                       </span>
                     ) : (
-                      <DescriptionList>
-                        {clusterKeys.map((name) => (
-                          <DescriptionListGroup key={name}>
-                            <DescriptionListTerm>{name}</DescriptionListTerm>
-                            <DescriptionListDescription>
-                              {t('overview_operators_count', {
-                                count: (byCluster.get(name) ?? []).length,
-                              })}
-                            </DescriptionListDescription>
-                          </DescriptionListGroup>
-                        ))}
-                      </DescriptionList>
+                      <div>
+                        {clusterKeys.map((name) => {
+                          const clusterKey =
+                            name === 'Hub (current session)' ? '__hub_direct__' : name;
+                          const count = (byCluster.get(name) ?? []).length;
+                          return (
+                            <div key={name} className={overviewRowClass}>
+                              <span className="pf-v6-u-truncate">{name}</span>
+                              <Button
+                                variant="link"
+                                isInline
+                                component="a"
+                                href={`/multicloud/ecosystem/installed-operators?cluster=${encodeURIComponent(
+                                  clusterKey,
+                                )}`}
+                                className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
+                              >
+                                {count}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </CardBody>
                 </Card>

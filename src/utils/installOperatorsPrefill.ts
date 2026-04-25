@@ -57,7 +57,9 @@ export type OperatorPolicySubscriptionPrefill = {
   startingCSV?: string;
 };
 
-export function urlPrefillToModalPrefill(u: InstallOperatorsUrlPrefill): OperatorPolicySubscriptionPrefill {
+export function urlPrefillToModalPrefill(
+  u: InstallOperatorsUrlPrefill,
+): OperatorPolicySubscriptionPrefill {
   return {
     subscriptionNamespace: u.subscriptionNamespace,
     policyNamespace: u.policyNamespace,

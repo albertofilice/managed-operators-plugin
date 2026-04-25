@@ -4,7 +4,7 @@ plugin:
   name: managed-operators-plugin
   description: "Managed cluster operators (OLM)"
   image: ""
-  imagePullPolicy: IfNotPresent
+  imagePullPolicy: Always
   imagePullSecrets: []
   replicas: 2
   port: 9443
@@ -27,6 +27,24 @@ plugin:
     requests:
       cpu: 10m
       memory: 50Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  probes:
+    liveness:
+      enabled: true
+      path: /healthz
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 2
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      path: /healthz
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
   basePath: /
   serviceAccount:
     create: true
@@ -40,6 +58,7 @@ plugin:
     patchConsoles:
       enabled: true
       image: "registry.redhat.io/openshift4/ose-tools-rhel9@sha256:ee65b244fc94d5765514c604dc0a288517dcdce68de65128d047622b6b30a618"
+      imagePullPolicy: Always
       podSecurityContext:
         enabled: true
         runAsNonRoot: true

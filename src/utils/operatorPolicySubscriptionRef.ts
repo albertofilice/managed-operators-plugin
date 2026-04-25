@@ -1,5 +1,6 @@
 /** RHACM sets subscription annotation to identify the governing OperatorPolicy. */
-export const OP_POLICY_MANAGED_ANNOTATION = 'operatorpolicy.policy.open-cluster-management.io/managed';
+export const OP_POLICY_MANAGED_ANNOTATION =
+  'operatorpolicy.policy.open-cluster-management.io/managed';
 
 export const OP_POLICY_MANAGED_LABEL = 'operatorpolicy.policy.open-cluster-management.io/managed';
 
@@ -7,7 +8,9 @@ export const OP_POLICY_MANAGED_LABEL = 'operatorpolicy.policy.open-cluster-manag
  * Parses OperatorPolicy ref from subscription annotation: `namespace/name` or `namespace.policyname`
  * (first dot separates namespace from name when no slash).
  */
-export function parseOperatorPolicyRefFromManagedValue(value: string): { namespace: string; name: string } | null {
+export function parseOperatorPolicyRefFromManagedValue(
+  value: string,
+): { namespace: string; name: string } | null {
   const v = value.trim();
   if (!v) return null;
   const slash = v.indexOf('/');

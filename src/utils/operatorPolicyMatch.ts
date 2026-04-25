@@ -18,8 +18,6 @@ export function matchesPackageManifest(pm: PackageManifestKind, pol: OperatorPol
   const src = (pm.status?.catalogSource ?? '').trim();
   const srcNs = (pm.status?.catalogSourceNamespace ?? '').trim();
   return (
-    s.name === pkg &&
-    (s.source ?? '').trim() === src &&
-    (s.sourceNamespace ?? '').trim() === srcNs
+    s.name === pkg && (s.source ?? '').trim() === src && (s.sourceNamespace ?? '').trim() === srcNs
   );
 }
