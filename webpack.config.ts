@@ -1,5 +1,6 @@
 /* eslint-env node */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import { Configuration as WebpackConfiguration } from 'webpack';
 import { Configuration as WebpackDevServerConfiguration } from 'webpack-dev-server';
@@ -82,7 +83,6 @@ const config: Configuration = {
           name: 'mop-local-manifest',
           path: '/plugin-manifest.json',
           middleware: (_req, res) => {
-            const fs = require('fs');
             const manifest = JSON.parse(
               fs.readFileSync(path.resolve(__dirname, 'dist/plugin-manifest.json'), 'utf8'),
             );
