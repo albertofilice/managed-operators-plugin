@@ -131,6 +131,8 @@ yarn install --immutable
 
   The script runs the console in a container and expects the plugin from `yarn start` (see `start-console.sh` for `CONSOLE_PORT` and console image variables).
 
+- **Local console with the plugin pages** (stock OKD/OpenShift console in a container, no ACM perspective): run `yarn start-local` (dev server on 9001 serving the manifest without `perspective: "acm"`), then `yarn start-console`. The MCE proxy (`/api/proxy/plugin/mce/...`) does not exist in a plain console; to see real data, run a small forwarder to your cluster API and pass it to the console container via `BRIDGE_PLUGIN_PROXY` (`{"services":[{"consoleAPIPath":"/api/proxy/plugin/mce/console/","endpoint":"http://host.containers.internal:9100","authorize":false}]}`).
+
 - **Production build** (output in `dist/`):
 
   ```bash

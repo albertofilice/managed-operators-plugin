@@ -62,6 +62,8 @@ const config: Configuration = {
   devServer: {
     static: './dist',
     port: 9001,
+    // The react-charts/victory typing warning is harmless; do not cover the page with it.
+    client: { overlay: { errors: true, warnings: false } },
     // Allow Bridge running in a container to connect to the plugin dev server.
     allowedHosts: 'all',
     headers: {
@@ -71,6 +73,28 @@ const config: Configuration = {
     },
     devMiddleware: {
       writeToDisk: true,
+    },
+    // Local testing against the stock OKD/OpenShift console (no ACM perspective): `yarn start-local`
+    // serves the manifest without `perspective: "acm"` so the pages render at their routes.
+    setupMiddlewares: (middlewares) => {
+      if (process.env.MOP_LOCAL_DEV === 'true') {
+        middlewares.unshift({
+          name: 'mop-local-manifest',
+          path: '/plugin-manifest.json',
+          middleware: (_req, res) => {
+            const fs = require('fs');
+            const manifest = JSON.parse(
+              fs.readFileSync(path.resolve(__dirname, 'dist/plugin-manifest.json'), 'utf8'),
+            );
+            for (const ext of manifest.extensions ?? []) {
+              if (ext.properties) delete ext.properties.perspective;
+            }
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(manifest));
+          },
+        });
+      }
+      return middlewares;
     },
   },
   plugins: [
