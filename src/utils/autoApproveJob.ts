@@ -16,7 +16,7 @@ const LABELS = { 'app.kubernetes.io/managed-by': 'managed-operators-plugin' };
  * added to spec.versions (policy upgradeApproval Automatic) when it matches the policy regex (which defines the allowed minor line)
  * and keeps the installed major version (no silent major jumps).
  */
-const SCRIPT = `#!/bin/bash
+export const AUTO_APPROVE_SCRIPT = `#!/bin/bash
 set -uo pipefail
 ANN='${AUTO_APPROVE_REGEX_ANNOTATION}'
 CREATED='${PLUGIN_CREATED_ANNOTATION}'
@@ -132,7 +132,7 @@ export function manifests(): Manifest[] {
         apiVersion: 'v1',
         kind: 'ConfigMap',
         metadata: meta({ name: 'auto-approve-script', namespace: AUTO_APPROVE_NAMESPACE }),
-        data: { 'run.sh': SCRIPT },
+        data: { 'run.sh': AUTO_APPROVE_SCRIPT },
       },
     },
     {

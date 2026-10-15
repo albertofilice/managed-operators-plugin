@@ -143,7 +143,13 @@ yarn install --immutable
   yarn lint
   ```
 
-- **End-to-end (Cypress)**:
+- **Unit tests** (no cluster needed; Node's built-in runner): they cover the drill-down filters and run the real auto-approve shell script against a fake `oc` (match, mismatch, major jump, non-plugin policies, `None`, `Automatic` without versions):
+
+  ```bash
+  yarn test-unit
+  ```
+
+- **End-to-end (Cypress)** — needs a reachable console and `BRIDGE_BASE_ADDRESS` / `BRIDGE_KUBEADMIN_PASSWORD`. By default the spec installs the Helm chart first; to test a plugin that is already deployed, use `yarn test-cypress-deployed` (sets `PLUGIN_ALREADY_DEPLOYED=true`):
 
   ```bash
   yarn test-cypress
