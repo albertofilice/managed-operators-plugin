@@ -4,9 +4,11 @@ Dynamic console plugin for **Red Hat Advanced Cluster Management (RHACM)** / **m
 
 ## Features
 
-- **Overview** (`/multicloud/ecosystem/managed-operators-overview`): dashboard-style summary with **ChartDonut** cards (CSV health, pending upgrades, governance vs standalone OLM, policy reference) plus per-cluster counts and links to the other plugin pages.
+- **Overview** (`/multicloud/ecosystem/managed-operators-overview`): dashboard-style summary with **ChartDonut** cards (CSV health, pending upgrades, governance vs standalone OLM, policy reference) plus per-cluster counts and links to the other plugin pages. Each segment count and summary line is a **drill-down** link to **Installed Operators** pre-filtered via `?filter=` (`csv_succeeded`, `csv_other`, `upgrade_pending`, `upgrade_none`, `governed`, `standalone`, `policy_ref`, `no_policy_ref`, `external`, `plugin`), combinable with `?cluster=`; a banner offers **Clear filter**.
 - **Installed Operators** (`/multicloud/ecosystem/installed-operators`): OLM **Subscriptions** for each cluster (hub and/or managed), CSV status, InstallPlan approval, **OperatorPolicy** references where present; **Edit policy** only when the `OperatorPolicy` was created from this plugin (annotation `console.openshift.io/managed-operators-plugin-created=true`). Policies reconciled from a hub **Policy**, GitOps, or YAML (no plugin annotation) are labeled **External** — change them via RHACM / GitOps, not **Uninstall** here (the subscription would be recreated). **Uninstall** is offered for governance-backed installs that are **not** external (e.g. created from this plugin’s flow), understanding the OperatorPolicy may still recreate the Subscription until the policy is removed or changed; **Migrate to OperatorPolicy** for manual OLM installs (opt-in label `managed-operators-plugin.openshift.io/enroll-operator-policy=true`, then create a matching policy from **Install operators** or automation). When a Subscription has a pending **Manual** InstallPlan approval (`spec.approved: false`), the page offers an **Approve InstallPlan** action (merge-patch) so OLM can proceed.
 - **Install operators** (`/multicloud/ecosystem/install-operators`): guided install flow aligned with OperatorPolicy and catalogs, with both a guided form and a **read/write YAML tab** when creating/editing OperatorPolicy. For GitOps-first teams, you can also **Generate YAML** (no apply) for ready-to-commit manifests.
+- **Bulk install**: on **Install operators**, tick additional Ready clusters to create the same OperatorPolicy on each; failures are reported per cluster.
+- **Minor-line auto-approve**: optional regex field on the policy (annotation `managed-operators-plugin.openshift.io/auto-approve-regex`). Apply `deploy/auto-approve/auto-approve.yaml` on the cluster hosting the OperatorPolicies: a CronJob adds matching pending InstallPlan CSVs (same installed major.minor only) to `spec.versions` and writes a `last-auto-approved` audit annotation. Use with `upgradeApproval: None`.
 
 All three pages are registered in `console-extensions.json` (routes + **Ecosystem** nav). **Overview** is the first menu item and the natural entry point for the plugin; it ships with the same build as **Installed Operators** and **Install operators** once you deploy the plugin.
 
@@ -207,14 +209,8 @@ After deploy, ensure the cluster **Console** loads the plugin (the chart can run
 
 Planned and under consideration. Contributions and design discussion are welcome via issues.
 
-### High-priority ideas
-
-1. **Minor-line regex + auto-approve (dashboard-driven)** — Store a **per–OperatorPolicy / per–cluster** pattern in the console (persisted server-side or via CRD/ConfigMap—TBD), e.g. `smb-csi-driver-operator.v4.20.*`. A **background or controller flow** watches **InstallPlans** (and/or subscription state): when a new plan’s target CSV **matches** the saved regex, **approve the InstallPlan** if needed and **patch `OperatorPolicy`** with the **concrete version** read from the InstallPlan (or equivalent OLM fields). Scope: **minor line only** (no silent major jumps), audit trail, and explicit opt-in per policy. The plugin UI is the **control plane for the pattern**; execution may be a small **operator on hub or managed cluster** so it works without keeping the browser open.
-
 ### Other ideas
 
-- **Bulk / multi-cluster patterns** — Select several **Ready** clusters and apply the same install template (behind confirmations and RBAC checks).
-- **Overview drill-down (charts + filters)** — Click-through from donut segments / summary lines to pre-filtered views (e.g. pending upgrades, external policies).
 - **Stronger testing and docs** — Expand **Cypress** coverage for Overview and policy flows; document **RBAC** matrices and proxy requirements for managed clusters.
 - **More locales** — Additional language packs beyond `en` once strings stabilize.
 

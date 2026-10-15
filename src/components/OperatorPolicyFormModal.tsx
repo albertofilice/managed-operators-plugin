@@ -30,7 +30,10 @@ import type {
 } from '../types/operatorPolicy';
 import { TrashIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
-import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
+import {
+  AUTO_APPROVE_REGEX_ANNOTATION,
+  PLUGIN_CREATED_ANNOTATION,
+} from '../constants/operatorPolicyPlugin';
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
 import type { OperatorPolicySubscriptionPrefill } from '../utils/installOperatorsPrefill';
@@ -54,6 +57,8 @@ export type OperatorPolicyFormModalProps = {
   /** If true, do not POST/PUT. Show generated YAML instead (GitOps-first). */
   generateOnly?: boolean;
   clusterName: string;
+  /** Create mode only: also apply the same OperatorPolicy to these Ready clusters (bulk install). */
+  additionalClusters?: string[];
   selectedPkg: PackageManifestKind | null;
   catalogSources: CatalogSourceKind[];
   loadingCs: boolean;
@@ -129,6 +134,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   mode,
   generateOnly = false,
   clusterName,
+  additionalClusters,
   selectedPkg,
   catalogSources,
   loadingCs,
@@ -150,6 +156,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   const [upgradeApproval, setUpgradeApproval] = React.useState<'Automatic' | 'None'>('Automatic');
   const [startingCSV, setStartingCSV] = React.useState('');
   const [versionsText, setVersionsText] = React.useState('');
+  const [autoApproveRegex, setAutoApproveRegex] = React.useState('');
   const [severity, setSeverity] = React.useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [complianceType, setComplianceType] = React.useState<'musthave' | 'mustnothave'>(
     'musthave',
@@ -233,6 +240,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       setUpgradeApproval('Automatic');
       setStartingCSV('');
       setVersionsText('');
+      setAutoApproveRegex('');
       setSeverity('medium');
       setComplianceType('musthave');
       setCcCatalog('Compliant');
@@ -289,6 +297,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     setUpgradeApproval(spec.upgradeApproval === 'None' ? 'None' : 'Automatic');
     setStartingCSV((sub.startingCSV ?? '').trim());
     setVersionsText((spec.versions ?? []).join(', '));
+    setAutoApproveRegex(meta?.annotations?.[AUTO_APPROVE_REGEX_ANNOTATION] ?? '');
     setSeverity(spec.severity ?? 'medium');
     setComplianceType(spec.complianceType === 'mustnothave' ? 'mustnothave' : 'musthave');
     const cc = spec.complianceConfig;
@@ -402,6 +411,19 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       spec.versions = versions;
     }
 
+    const regex = autoApproveRegex.trim();
+    if (regex) {
+      try {
+        new RegExp(regex);
+      } catch (e) {
+        throw new Error(
+          t('policy_modal_err_auto_approve_regex', {
+            detail: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      }
+    }
+
     const body: OperatorPolicyKind = {
       apiVersion: 'policy.open-cluster-management.io/v1beta1',
       kind: 'OperatorPolicy',
@@ -425,6 +447,14 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     if (mode === 'edit') {
       delete (body as { status?: unknown }).status;
     }
+
+    const annotations = { ...(body.metadata?.annotations ?? {}) };
+    if (regex) {
+      annotations[AUTO_APPROVE_REGEX_ANNOTATION] = regex;
+    } else {
+      delete annotations[AUTO_APPROVE_REGEX_ANNOTATION];
+    }
+    body.metadata = { ...(body.metadata ?? {}), annotations };
 
     return body;
   };
@@ -512,54 +542,74 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     const effectivePolicyNs = (body.metadata?.namespace ?? policyNamespace).trim();
     const effectivePolicyName = (body.metadata?.name ?? policyName).trim();
 
-    const base = clusterApiPath(
-      clusterName,
-      `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(effectivePolicyNs)}/operatorpolicies`,
-    );
-    const url = mode === 'edit' ? `${base}/${encodeURIComponent(effectivePolicyName)}` : base;
-
     const polNs = effectivePolicyNs;
     const polNm = effectivePolicyName;
     const subSpec = body.spec?.subscription;
 
-    try {
+    const applyToCluster = async (cluster: string): Promise<string> => {
+      const perClusterNs = polNs === clusterName ? cluster : polNs;
+      const clusterBody: OperatorPolicyKind =
+        cluster === clusterName
+          ? body
+          : {
+              ...body,
+              metadata: { ...(body.metadata ?? {}), namespace: perClusterNs },
+            };
+      const base = clusterApiPath(
+        cluster,
+        `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(perClusterNs)}/operatorpolicies`,
+      );
+      const url = mode === 'edit' ? `${base}/${encodeURIComponent(polNm)}` : base;
       if (mode === 'create') {
-        await consoleFetchJSON.post(url, body);
+        await consoleFetchJSON.post(url, clusterBody);
       } else {
-        await consoleFetchJSON.put(url, body);
+        await consoleFetchJSON.put(url, clusterBody);
       }
 
-      let successMsg =
+      let msg =
         mode === 'create'
-          ? t('policy_modal_success_created', {
-              namespace: polNs,
-              name: polNm,
-              cluster: clusterName,
-            })
-          : t('policy_modal_success_updated', {
-              namespace: polNs,
-              name: polNm,
-              cluster: clusterName,
-            });
+          ? t('policy_modal_success_created', { namespace: perClusterNs, name: polNm, cluster })
+          : t('policy_modal_success_updated', { namespace: perClusterNs, name: polNm, cluster });
 
-      if (subSpec?.name && subSpec?.namespace && polNs && polNm) {
+      if (subSpec?.name && subSpec?.namespace && perClusterNs && polNm) {
         try {
           await patchSubscriptionOperatorPolicyManagedLink({
-            clusterName,
+            clusterName: cluster,
             subscriptionNamespace: subSpec.namespace,
             subscriptionName: subSpec.name,
-            policyNamespace: polNs,
+            policyNamespace: perClusterNs,
             policyName: polNm,
           });
         } catch (linkErr) {
-          successMsg = `${successMsg} ${t('policy_modal_warn_sub_link', { error: String(linkErr) })}`;
+          msg = `${msg} ${t('policy_modal_warn_sub_link', { error: String(linkErr) })}`;
         }
       }
+      return msg;
+    };
 
-      onSuccess?.(successMsg);
+    const targets =
+      mode === 'create'
+        ? [clusterName, ...(additionalClusters ?? []).filter((c) => c && c !== clusterName)]
+        : [clusterName];
+
+    try {
+      const okMessages: string[] = [];
+      const failures: string[] = [];
+      for (const cluster of targets) {
+        try {
+          okMessages.push(await applyToCluster(cluster));
+        } catch (e) {
+          failures.push(`${cluster}: ${String(e)}`);
+        }
+      }
+      if (okMessages.length > 0) {
+        onSuccess?.(okMessages.join('\n'));
+      }
+      if (failures.length > 0) {
+        setSubmitError(t('policy_modal_bulk_failures', { failures: failures.join('\n') }));
+        return;
+      }
       onClose();
-    } catch (e) {
-      setSubmitError(String(e));
     } finally {
       setSubmitting(false);
     }
@@ -972,6 +1022,15 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                     onChange={(_e, v) => setVersionsText(v)}
                   />
                   <FormHelperText>{t('policy_modal_helper_allowed_versions')}</FormHelperText>
+                </FormGroup>
+                <FormGroup label={t('policy_modal_label_auto_approve')} fieldId="auto-approve">
+                  <TextInput
+                    id="auto-approve"
+                    value={autoApproveRegex}
+                    onChange={(_e, v) => setAutoApproveRegex(v)}
+                    placeholder="^my-operator\\.v4\\.20\\..*$"
+                  />
+                  <FormHelperText>{t('policy_modal_helper_auto_approve')}</FormHelperText>
                 </FormGroup>
               </Form>
             </Tab>

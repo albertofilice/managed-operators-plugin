@@ -22,6 +22,7 @@ import {
   type OperatorRow,
 } from '../hooks/useManagedClusterSubscriptions';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
+import { installedOperatorsHref, type OverviewFilter } from '../utils/overviewFilters';
 
 type ManagedClusterKind = K8sResourceCommon & {
   apiVersion: 'cluster.open-cluster-management.io/v1';
@@ -71,7 +72,7 @@ function OverviewDonut({
   title: string;
   ariaTitle: string;
   ariaDesc: string;
-  data: { x: string; y: number }[];
+  data: { x: string; y: number; filter?: OverviewFilter }[];
   noDataLabel: string;
   centerSubtitle: string;
 }) {
@@ -105,6 +106,26 @@ function OverviewDonut({
           width={CHART_WIDTH}
         />
       </CardBody>
+      {hasData && data.some((d) => d.filter) && (
+        <CardBody className="pf-v6-u-pt-0">
+          {data
+            .filter((d) => d.filter)
+            .map((d) => (
+              <div key={d.x} className="pf-v6-u-display-flex pf-v6-u-justify-content-space-between">
+                <span>{d.x}</span>
+                <Button
+                  variant="link"
+                  isInline
+                  component="a"
+                  href={installedOperatorsHref(d.filter)}
+                  isDisabled={d.y === 0}
+                >
+                  {d.y}
+                </Button>
+              </div>
+            ))}
+        </CardBody>
+      )}
     </Card>
   );
 }
@@ -222,8 +243,12 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
-                    { x: t('overview_chart_csv_succeeded'), y: stats.csvOk },
-                    { x: t('overview_chart_csv_other'), y: stats.csvOther },
+                    {
+                      x: t('overview_chart_csv_succeeded'),
+                      y: stats.csvOk,
+                      filter: 'csv_succeeded',
+                    },
+                    { x: t('overview_chart_csv_other'), y: stats.csvOther, filter: 'csv_other' },
                   ]}
                 />
               </GridItem>
@@ -235,8 +260,16 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
-                    { x: t('overview_chart_upgrade_pending'), y: stats.upgradePending },
-                    { x: t('overview_chart_upgrade_none'), y: stats.upgradeIdle },
+                    {
+                      x: t('overview_chart_upgrade_pending'),
+                      y: stats.upgradePending,
+                      filter: 'upgrade_pending',
+                    },
+                    {
+                      x: t('overview_chart_upgrade_none'),
+                      y: stats.upgradeIdle,
+                      filter: 'upgrade_none',
+                    },
                   ]}
                 />
               </GridItem>
@@ -248,8 +281,12 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
-                    { x: t('overview_chart_gov_policy'), y: stats.gov },
-                    { x: t('overview_chart_gov_standalone'), y: stats.standalone },
+                    { x: t('overview_chart_gov_policy'), y: stats.gov, filter: 'governed' },
+                    {
+                      x: t('overview_chart_gov_standalone'),
+                      y: stats.standalone,
+                      filter: 'standalone',
+                    },
                   ]}
                 />
               </GridItem>
@@ -261,8 +298,12 @@ export function OperatorsOverviewPage(): React.ReactElement {
                   centerSubtitle={t('overview_chart_center_subtitle')}
                   noDataLabel={t('overview_chart_no_data')}
                   data={[
-                    { x: t('overview_chart_ref_with'), y: stats.withRef },
-                    { x: t('overview_chart_ref_without'), y: stats.withoutRef },
+                    { x: t('overview_chart_ref_with'), y: stats.withRef, filter: 'policy_ref' },
+                    {
+                      x: t('overview_chart_ref_without'),
+                      y: stats.withoutRef,
+                      filter: 'no_policy_ref',
+                    },
                   ]}
                 />
               </GridItem>
@@ -291,7 +332,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                         variant="link"
                         isInline
                         component="a"
-                        href="/multicloud/ecosystem/installed-operators"
+                        href={installedOperatorsHref()}
                         className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
                       >
                         {stats.total}
@@ -308,7 +349,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                           variant="link"
                           isInline
                           component="a"
-                          href="/multicloud/ecosystem/installed-operators"
+                          href={installedOperatorsHref('external')}
                           className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
                         >
                           {stats.external}
@@ -326,7 +367,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                           variant="link"
                           isInline
                           component="a"
-                          href="/multicloud/ecosystem/installed-operators"
+                          href={installedOperatorsHref('plugin')}
                           className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
                         >
                           {stats.pluginManaged}

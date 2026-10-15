@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   CardBody,
+  Checkbox,
   Form,
   FormGroup,
   FormHelperText,
@@ -22,7 +23,7 @@ import {
 } from '@patternfly/react-core';
 import { CodeIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { useHistory, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom-v5-compat';
 import { useTranslation } from 'react-i18next';
 import type { PackageManifestKind, PackageManifestList } from '../types/packageManifest';
 import type { OperatorPolicyKind } from '../types/operatorPolicy';
@@ -90,7 +91,7 @@ function packageRowKey(pm: PackageManifestKind): string {
 
 const InstallOperatorsPage: React.FC = () => {
   const { t } = useTranslation('plugin__managed-operators-plugin');
-  const history = useHistory();
+  const navigate = useNavigate();
   const location = useLocation();
   const [clusters] = useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
@@ -103,6 +104,7 @@ const InstallOperatorsPage: React.FC = () => {
   }, [clusters]);
 
   const [selectedCluster, setSelectedCluster] = React.useState('');
+  const [extraClusters, setExtraClusters] = React.useState<string[]>([]);
   const [nameFilter, setNameFilter] = React.useState('');
   const [providerFilter, setProviderFilter] = React.useState('');
   const [catalogFilter, setCatalogFilter] = React.useState('');
@@ -155,7 +157,7 @@ const InstallOperatorsPage: React.FC = () => {
     if (!pm) {
       if (!loadingPm && packages.length > 0) {
         deepLinkConsumedForSearchRef.current = location.search;
-        history.replace({ pathname: location.pathname, search: '' });
+        navigate({ pathname: location.pathname, search: '' }, { replace: true });
       }
       return;
     }
@@ -166,14 +168,14 @@ const InstallOperatorsPage: React.FC = () => {
     setModalMode('create');
     setEditPolicy(null);
     setModalOpen(true);
-    history.replace({ pathname: location.pathname, search: '' });
+    navigate({ pathname: location.pathname, search: '' }, { replace: true });
   }, [
     urlPrefill,
     selectedCluster,
     loadingPm,
     pmError,
     packages,
-    history,
+    navigate,
     location.pathname,
     location.search,
   ]);
@@ -350,6 +352,7 @@ const InstallOperatorsPage: React.FC = () => {
                   value={selectedCluster}
                   onChange={(_e, val) => {
                     setSelectedCluster(String(val));
+                    setExtraClusters([]);
                     setNameFilter('');
                     setProviderFilter('');
                     setCatalogFilter('');
@@ -362,6 +365,30 @@ const InstallOperatorsPage: React.FC = () => {
                   ))}
                 </FormSelect>
               </FormGroup>
+              {selectedCluster && clusterNames.length > 1 && (
+                <FormGroup
+                  role="group"
+                  label={t('install_label_extra_clusters')}
+                  fieldId="extra-clusters"
+                >
+                  {clusterNames
+                    .filter((n) => n !== selectedCluster)
+                    .map((n) => (
+                      <Checkbox
+                        key={n}
+                        id={`extra-cluster-${n}`}
+                        label={n}
+                        isChecked={extraClusters.includes(n)}
+                        onChange={(_e, checked) =>
+                          setExtraClusters((prev) =>
+                            checked ? [...prev, n] : prev.filter((c) => c !== n),
+                          )
+                        }
+                      />
+                    ))}
+                  <FormHelperText>{t('install_helper_extra_clusters')}</FormHelperText>
+                </FormGroup>
+              )}
               <FormGroup label={t('install_label_filter_package')} fieldId="filter-pm">
                 <TextInput
                   id="filter-pm"
@@ -539,6 +566,9 @@ const InstallOperatorsPage: React.FC = () => {
         mode={modalMode}
         generateOnly={modalGenerateOnly}
         clusterName={selectedCluster}
+        additionalClusters={
+          modalMode === 'create' && !modalGenerateOnly ? extraClusters : undefined
+        }
         selectedPkg={modalMode === 'create' ? selectedPkg : null}
         catalogSources={catalogSources}
         loadingCs={loadingCs}

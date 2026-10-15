@@ -1,0 +1,139 @@
+# Minor-line auto-approve for OperatorPolicy (apply on each cluster where OperatorPolicies live).
+#
+# For every OperatorPolicy annotated with
+#   managed-operators-plugin.openshift.io/auto-approve-regex: '^my-operator\.v4\.20\..*$'
+# this job looks for pending (spec.approved=false) InstallPlans in the policy's subscription
+# namespace. When the target CSV matches the regex AND stays on the same major.minor line as the
+# currently installed CSV, the CSV name is appended to the policy's spec.versions so that
+# OperatorPolicy (upgradeApproval: None) approves the plan itself. An audit annotation is written.
+#
+#   oc apply -f deploy/auto-approve/auto-approve.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: managed-operators-auto-approve
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: auto-approve
+  namespace: managed-operators-auto-approve
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: managed-operators-auto-approve
+rules:
+  - apiGroups: ["policy.open-cluster-management.io"]
+    resources: ["operatorpolicies"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["installplans", "subscriptions"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: managed-operators-auto-approve
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: managed-operators-auto-approve
+subjects:
+  - kind: ServiceAccount
+    name: auto-approve
+    namespace: managed-operators-auto-approve
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auto-approve-script
+  namespace: managed-operators-auto-approve
+data:
+  run.sh: |
+    #!/bin/bash
+    set -uo pipefail
+    ANN='managed-operators-plugin.openshift.io/auto-approve-regex'
+    AUDIT='managed-operators-plugin.openshift.io/last-auto-approved'
+
+    minor_line() { # CSV name or version -> "major.minor"
+      echo "$1" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 | awk -F. '{print $1"."$2}'
+    }
+
+    oc get operatorpolicies.policy.open-cluster-management.io -A -o json \
+      | jq -c --arg a "$ANN" '.items[] | select(.metadata.annotations[$a] != null)' \
+      | while read -r pol; do
+        pns=$(jq -r '.metadata.namespace' <<<"$pol")
+        pname=$(jq -r '.metadata.name' <<<"$pol")
+        regex=$(jq -r --arg a "$ANN" '.metadata.annotations[$a]' <<<"$pol")
+        subns=$(jq -r '.spec.subscription.namespace' <<<"$pol")
+        subname=$(jq -r '.spec.subscription.name' <<<"$pol")
+        echo "policy $pns/$pname regex=$regex sub=$subns/$subname"
+
+        installed=$(oc get subscriptions.operators.coreos.com "$subname" -n "$subns" \
+          -o jsonpath='{.status.installedCSV}' 2>/dev/null)
+        if [ -z "$installed" ]; then echo "  no installed CSV yet, skipping"; continue; fi
+        line=$(minor_line "$installed")
+
+        oc get installplans.operators.coreos.com -n "$subns" -o json \
+          | jq -r '.items[] | select(.spec.approved == false) | .spec.clusterServiceVersionNames[]' \
+          | sort -u | while read -r csv; do
+            if ! [[ "$csv" =~ $regex ]]; then echo "  $csv: regex mismatch"; continue; fi
+            if [ "$(minor_line "$csv")" != "$line" ]; then
+              echo "  $csv: outside installed minor line $line, NOT approved"; continue
+            fi
+            if jq -e --arg c "$csv" '(.spec.versions // []) | index($c)' <<<"$pol" >/dev/null; then
+              echo "  $csv: already allowed"; continue
+            fi
+            patch=$(jq -nc --arg c "$csv" --arg a "$AUDIT" --arg ts "$(date -u +%FT%TZ)" \
+              --argjson v "$(jq -c '(.spec.versions // []) + [$c]' --arg c "$csv" <<<"$pol")" \
+              '{metadata:{annotations:{($a): ($c + "@" + $ts)}}, spec:{versions:$v}}')
+            if oc patch operatorpolicies.policy.open-cluster-management.io "$pname" -n "$pns" \
+                 --type=merge -p "$patch"; then
+              echo "  $csv: added to spec.versions (auto-approved)"
+            fi
+          done
+      done
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: auto-approve
+  namespace: managed-operators-auto-approve
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: auto-approve
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: auto-approve
+              # Same tools image the Helm chart uses for the console patch job (oc + jq).
+              image: registry.redhat.io/openshift4/ose-tools-rhel9@sha256:ee65b244fc94d5765514c604dc0a288517dcdce68de65128d047622b6b30a618
+              command: ["/bin/bash", "/scripts/run.sh"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 50Mi
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+          volumes:
+            - name: script
+              configMap:
+                name: auto-approve-script
+                defaultMode: 0555

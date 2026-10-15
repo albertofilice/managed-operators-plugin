@@ -1,0 +1,16 @@
+# Example values for charts/openshift-console-plugin
+# Usage: helm upgrade -i managed-operators-plugin charts/openshift-console-plugin \
+#          -n managed-operators-plugin --create-namespace -f helm-values.example.yaml
+plugin:
+  name: managed-operators-plugin
+  # Required: image you built and pushed (linux/amd64 for typical OpenShift nodes).
+  image: quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1
+  imagePullPolicy: IfNotPresent
+  replicas: 2
+  # Private registry pull secret(s):
+  # imagePullSecrets:
+  #   - name: my-pull-secret
+  jobs:
+    patchConsoles:
+      # Set to false if you enable the plugin on the Console operator yourself (GitOps).
+      enabled: true
