@@ -242,7 +242,10 @@
   "install_helper_extra_clusters": "Bulk install: the same OperatorPolicy is created on each selected Ready cluster (policy namespace defaults to the cluster name). Catalog sources and channels must exist on every target; failures are reported per cluster.",
   "policy_modal_bulk_failures": "Some clusters failed:\\n{{failures}}",
   "policy_modal_label_auto_approve": "Auto-approve minor line (regex, optional)",
-  "policy_modal_helper_auto_approve": "Stored as an annotation on this OperatorPolicy; only policies created from this plugin are handled. Saving installs a small CronJob on the cluster (namespace managed-operators-auto-approve) that adds a pending InstallPlan's CSV to spec.versions when it matches the regex and stays on the installed major.minor line. Use together with upgrade approval None.",
+  "policy_modal_helper_auto_approve": "Stored as an annotation on this OperatorPolicy; only policies created from this plugin are handled. Saving installs a small CronJob on the cluster (namespace managed-operators-auto-approve) that adds a pending InstallPlan's CSV to spec.versions when it matches the regex and keeps the installed major version; OperatorPolicy then approves it. The regex defines the allowed line, e.g. ^my-operator\\.v4\\.11\\..*$.",
   "policy_modal_err_auto_approve_regex": "Invalid auto-approve regex: {{detail}}",
-  "policy_modal_warn_auto_approve_job": "Policy saved, but the auto-approve job could not be installed: {{error}}"
+  "policy_modal_warn_auto_approve_job": "Policy saved, but the auto-approve job could not be installed: {{error}}",
+  "policy_modal_info_sub_pending": "The Subscription is not created yet; the governance controller will create and link it shortly.",
+  "policy_modal_link_regex_help": "Regular expression cheat sheet",
+  "policy_modal_helper_auto_approve_unavailable": "Available only with upgrade approval Automatic and a non-empty allowed versions list. Automatic without versions already approves every upgrade; None needs the manual Approve InstallPlan button on Installed Operators."
 }

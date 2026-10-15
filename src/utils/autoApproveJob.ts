@@ -13,7 +13,8 @@ const LABELS = { 'app.kubernetes.io/managed-by': 'managed-operators-plugin' };
 /**
  * Minor-line auto-approve. Only OperatorPolicies created from this plugin are considered, so
  * policies delivered by a hub Policy / GitOps are never touched. A pending InstallPlan's CSV is
- * added to spec.versions when it matches the policy regex and stays on the installed major.minor.
+ * added to spec.versions (policy upgradeApproval Automatic) when it matches the policy regex (which defines the allowed minor line)
+ * and keeps the installed major version (no silent major jumps).
  */
 const SCRIPT = `#!/bin/bash
 set -uo pipefail
@@ -21,8 +22,8 @@ ANN='${AUTO_APPROVE_REGEX_ANNOTATION}'
 CREATED='${PLUGIN_CREATED_ANNOTATION}'
 AUDIT='${AUDIT_ANNOTATION}'
 
-minor_line() {
-  echo "$1" | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -n1 | awk -F. '{print $1"."$2}'
+major() {
+  echo "$1" | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -n1 | awk -F. '{print $1}'
 }
 
 oc get operatorpolicies.policy.open-cluster-management.io -A -o json \\
@@ -36,23 +37,31 @@ oc get operatorpolicies.policy.open-cluster-management.io -A -o json \\
     subname=$(jq -r '.spec.subscription.name' <<<"$pol")
     echo "policy $pns/$pname regex=$regex sub=$subns/$subname"
 
+    # OperatorPolicy approves upgrades itself only with upgradeApproval Automatic, restricted to
+    # spec.versions. None never approves; Automatic without versions approves everything (nothing
+    # to do). So the regex only has an effect with Automatic AND a non-empty versions list.
+    mode=$(jq -r '.spec.upgradeApproval // "Automatic"' <<<"$pol")
+    if [ "$mode" != "Automatic" ] || ! jq -e '(.spec.versions // []) | length > 0' <<<"$pol" >/dev/null; then
+      echo "  needs upgradeApproval Automatic and a non-empty versions list, skipping"; continue
+    fi
+
     installed=$(oc get subscriptions.operators.coreos.com "$subname" -n "$subns" \\
       -o jsonpath='{.status.installedCSV}' 2>/dev/null)
     if [ -z "$installed" ]; then echo "  no installed CSV yet, skipping"; continue; fi
-    line=$(minor_line "$installed")
+    line=$(major "$installed")
 
     oc get installplans.operators.coreos.com -n "$subns" -o json \\
       | jq -r '.items[] | select(.spec.approved == false) | .spec.clusterServiceVersionNames[]' \\
       | sort -u | while read -r csv; do
         if ! [[ "$csv" =~ $regex ]]; then echo "  $csv: regex mismatch"; continue; fi
-        if [ "$(minor_line "$csv")" != "$line" ]; then
-          echo "  $csv: outside installed minor line $line, NOT approved"; continue
+        if [ "$(major "$csv")" != "$line" ]; then
+          echo "  $csv: different major than installed (v$line), NOT approved"; continue
         fi
         if jq -e --arg c "$csv" '(.spec.versions // []) | index($c)' <<<"$pol" >/dev/null; then
           echo "  $csv: already allowed"; continue
         fi
         patch=$(jq -nc --arg c "$csv" --arg a "$AUDIT" --arg ts "$(date -u +%FT%TZ)" \\
-          --argjson v "$(jq -c --arg c "$csv" '(.spec.versions // []) + [$c]' <<<"$pol")" \\
+          --argjson v "$(jq -c --arg c "$csv" '(.spec.versions // []) + [$c] | unique' <<<"$pol")" \\
           '{metadata:{annotations:{($a): ($c + "@" + $ts)}}, spec:{versions:$v}}')
         if oc patch operatorpolicies.policy.open-cluster-management.io "$pname" -n "$pns" \\
              --type=merge -p "$patch"; then

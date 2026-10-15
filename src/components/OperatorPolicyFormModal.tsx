@@ -90,6 +90,28 @@ function defaultMatchLabels(): MatchLabelRow[] {
  * Installed Operators / Overview treat a row as governance-managed when the Subscription has this
  * annotation (ACM usually sets it; we set it here so the UI updates without waiting on the controller).
  */
+function isNotFound(e: unknown): boolean {
+  const code = (e as { code?: number })?.code;
+  return code === 404 || /not found|NotFound/i.test(String(e));
+}
+
+/** The governance controller creates the Subscription shortly after the policy: retry while 404. */
+async function linkSubscriptionWhenCreated(
+  options: Parameters<typeof patchSubscriptionOperatorPolicyManagedLink>[0],
+): Promise<'linked' | 'pending'> {
+  const tries = 8;
+  for (let i = 0; i < tries; i += 1) {
+    try {
+      await patchSubscriptionOperatorPolicyManagedLink(options);
+      return 'linked';
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
+  return 'pending';
+}
+
 async function patchSubscriptionOperatorPolicyManagedLink(options: {
   clusterName: string;
   subscriptionNamespace: string;
@@ -369,6 +391,22 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     }
     const hasOg = ogName.trim() || Object.keys(matchLabels).length > 0;
 
+    // Users sometimes paste an escaped form (\\.); a regex for a CSV name never needs a literal backslash.
+    const regex = !(upgradeApproval === 'Automatic' && versions.length > 0)
+      ? ''
+      : autoApproveRegex.trim().replace(/\\\\/g, '\\');
+    if (regex) {
+      try {
+        new RegExp(regex);
+      } catch (e) {
+        throw new Error(
+          t('policy_modal_err_auto_approve_regex', {
+            detail: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      }
+    }
+
     const spec: OperatorPolicyKind['spec'] = {
       remediationAction: remediation,
       severity,
@@ -412,19 +450,6 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       spec.versions = versions;
     }
 
-    const regex = autoApproveRegex.trim();
-    if (regex) {
-      try {
-        new RegExp(regex);
-      } catch (e) {
-        throw new Error(
-          t('policy_modal_err_auto_approve_regex', {
-            detail: e instanceof Error ? e.message : String(e),
-          }),
-        );
-      }
-    }
-
     const body: OperatorPolicyKind = {
       apiVersion: 'policy.open-cluster-management.io/v1beta1',
       kind: 'OperatorPolicy',
@@ -464,6 +489,9 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     const body = buildBody();
     setPolicyYaml(stringifyYaml(body).trimEnd());
   };
+
+  const autoApproveAvailable =
+    upgradeApproval === 'Automatic' && versionsText.split(/[\s,]+/).some((v) => v.trim());
 
   const submit = async () => {
     if (!clusterName) return;
@@ -574,13 +602,16 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
 
       if (subSpec?.name && subSpec?.namespace && perClusterNs && polNm) {
         try {
-          await patchSubscriptionOperatorPolicyManagedLink({
+          const linked = await linkSubscriptionWhenCreated({
             clusterName: cluster,
             subscriptionNamespace: subSpec.namespace,
             subscriptionName: subSpec.name,
             policyNamespace: perClusterNs,
             policyName: polNm,
           });
+          if (linked === 'pending') {
+            msg = `${msg} ${t('policy_modal_info_sub_pending')}`;
+          }
         } catch (linkErr) {
           msg = `${msg} ${t('policy_modal_warn_sub_link', { error: String(linkErr) })}`;
         }
@@ -1036,9 +1067,21 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                     id="auto-approve"
                     value={autoApproveRegex}
                     onChange={(_e, v) => setAutoApproveRegex(v)}
-                    placeholder="^my-operator\\.v4\\.20\\..*$"
+                    isDisabled={!autoApproveAvailable}
+                    placeholder="^my-operator\.v4\.20\..*$"
                   />
-                  <FormHelperText>{t('policy_modal_helper_auto_approve')}</FormHelperText>
+                  <FormHelperText>
+                    {autoApproveAvailable
+                      ? t('policy_modal_helper_auto_approve')
+                      : t('policy_modal_helper_auto_approve_unavailable')}{' '}
+                    <a
+                      href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions/Cheatsheet"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {t('policy_modal_link_regex_help')}
+                    </a>
+                  </FormHelperText>
                 </FormGroup>
               </Form>
             </Tab>
