@@ -36,6 +36,7 @@ import {
 } from '../constants/operatorPolicyPlugin';
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
+import { ensureAutoApproveJob } from '../utils/autoApproveJob';
 import type { OperatorPolicySubscriptionPrefill } from '../utils/installOperatorsPrefill';
 import { OP_POLICY_MANAGED_ANNOTATION } from '../utils/operatorPolicySubscriptionRef';
 
@@ -582,6 +583,13 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
           });
         } catch (linkErr) {
           msg = `${msg} ${t('policy_modal_warn_sub_link', { error: String(linkErr) })}`;
+        }
+      }
+      if (autoApproveRegex.trim() && activeTabKey === 'form') {
+        try {
+          await ensureAutoApproveJob(cluster);
+        } catch (jobErr) {
+          msg = `${msg} ${t('policy_modal_warn_auto_approve_job', { error: String(jobErr) })}`;
         }
       }
       return msg;

@@ -242,6 +242,7 @@
   "install_helper_extra_clusters": "Bulk install: the same OperatorPolicy is created on each selected Ready cluster (policy namespace defaults to the cluster name). Catalog sources and channels must exist on every target; failures are reported per cluster.",
   "policy_modal_bulk_failures": "Some clusters failed:\\n{{failures}}",
   "policy_modal_label_auto_approve": "Auto-approve minor line (regex, optional)",
-  "policy_modal_helper_auto_approve": "Stored as an annotation on the OperatorPolicy. The in-cluster auto-approve job adds a pending InstallPlan's CSV to spec.versions when it matches this regex and stays on the installed major.minor line. Use together with upgrade approval None.",
-  "policy_modal_err_auto_approve_regex": "Invalid auto-approve regex: {{detail}}"
+  "policy_modal_helper_auto_approve": "Stored as an annotation on this OperatorPolicy; only policies created from this plugin are handled. Saving installs a small CronJob on the cluster (namespace managed-operators-auto-approve) that adds a pending InstallPlan's CSV to spec.versions when it matches the regex and stays on the installed major.minor line. Use together with upgrade approval None.",
+  "policy_modal_err_auto_approve_regex": "Invalid auto-approve regex: {{detail}}",
+  "policy_modal_warn_auto_approve_job": "Policy saved, but the auto-approve job could not be installed: {{error}}"
 }
