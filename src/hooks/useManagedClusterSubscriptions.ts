@@ -206,14 +206,27 @@ function installPlanForSubscription(
   const subName = sub.metadata?.name;
   if (!ns || !subName) return undefined;
 
-  const byOwner = plans.find(
+  // A subscription owns every InstallPlan it ever generated; prefer one still waiting for approval,
+  // then the plan the Subscription currently points at, then the most recent one.
+  const owned = plans.filter(
     (ip) =>
       ip.metadata?.namespace === ns &&
       ip.metadata?.ownerReferences?.some(
         (ref) => ref.kind === 'Subscription' && ref.name === subName,
       ),
   );
-  if (byOwner) return byOwner;
+  const pending = owned.find((ip) => ip.spec?.approved === false);
+  if (pending) return pending;
+  const currentRefName = sub.status?.installPlanRef?.name;
+  const current = owned.find((ip) => ip.metadata?.name === currentRefName);
+  if (current) return current;
+  if (owned.length > 0) {
+    return [...owned].sort((a, b) =>
+      String(b.metadata?.creationTimestamp ?? '').localeCompare(
+        String(a.metadata?.creationTimestamp ?? ''),
+      ),
+    )[0];
+  }
 
   const ref = sub.status?.installPlanRef;
   if (ref?.name) {
@@ -271,7 +284,8 @@ async function enrichSubscriptionsWithInstallPlans(options: {
 
   const csvKeys = new Map<string, { ns: string; csv: string }>();
   for (const sub of subs) {
-    const csv = sub.status?.currentCSV ?? sub.status?.installedCSV;
+    // installedCSV is what runs now; currentCSV may be an upgrade target whose CSV does not exist yet.
+    const csv = sub.status?.installedCSV ?? sub.status?.currentCSV;
     const ns = sub.metadata?.namespace;
     if (csv && ns) {
       csvKeys.set(`${ns}|${csv}`, { ns, csv });
@@ -294,7 +308,7 @@ async function enrichSubscriptionsWithInstallPlans(options: {
     const ns = sub.metadata?.namespace ?? '—';
     const name = sub.metadata?.name ?? '—';
     const approval = sub.spec?.installPlanApproval;
-    const csvName = sub.status?.currentCSV ?? sub.status?.installedCSV ?? '';
+    const csvName = sub.status?.installedCSV ?? sub.status?.currentCSV ?? '';
     const csvKey = csvName && ns !== '—' ? `${ns}|${csvName}` : '';
     const csv = csvKey ? csvMap.get(csvKey) : null;
     const csvPhase = csv?.status?.phase ?? 'Unknown';

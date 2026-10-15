@@ -42,7 +42,12 @@ import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscrip
 import { clusterApiPath } from '../utils/clusterApi';
 import { MOP_Q } from '../utils/installOperatorsPrefill';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom-v5-compat';
+import {
+  OVERVIEW_FILTER_PARAM,
+  parseOverviewFilter,
+  rowMatchesOverviewFilter,
+} from '../utils/overviewFilters';
 
 /** Remove OperatorPolicy on the managed cluster when it was created from this plugin (stops governance from recreating the Subscription). */
 async function deletePluginOperatorPolicyIfPresent(
@@ -116,6 +121,7 @@ function CsvPhaseLabel({ succeeded, phase }: { succeeded: boolean; phase: string
 const MyCustomPage: React.FC = () => {
   const { t } = useTranslation('plugin__managed-operators-plugin');
   const location = useLocation();
+  const navigate = useNavigate();
   const [clusters, clustersLoaded, clustersError] =
     useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
@@ -144,7 +150,27 @@ const MyCustomPage: React.FC = () => {
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
 
-  const byCluster = React.useMemo(() => groupRowsByCluster(rows), [rows]);
+  const activeFilter = React.useMemo(() => parseOverviewFilter(location.search), [location.search]);
+  const visibleRows = React.useMemo(
+    () =>
+      activeFilter
+        ? rows.filter((r) =>
+            rowMatchesOverviewFilter(r, activeFilter, {
+              canEditPlugin,
+              isExternalGovernancePolicy,
+            }),
+          )
+        : rows,
+    [rows, activeFilter, canEditPlugin, isExternalGovernancePolicy],
+  );
+  const clearFilter = React.useCallback(() => {
+    const q = new URLSearchParams(location.search);
+    q.delete(OVERVIEW_FILTER_PARAM);
+    const s = q.toString();
+    navigate(`${location.pathname}${s ? `?${s}` : ''}`, { replace: true });
+  }, [navigate, location.pathname, location.search]);
+
+  const byCluster = React.useMemo(() => groupRowsByCluster(visibleRows), [visibleRows]);
   const clusterKeys = React.useMemo(() => [...byCluster.keys()].sort(), [byCluster]);
 
   const drillClusterKey = React.useMemo(() => {
@@ -445,6 +471,27 @@ const MyCustomPage: React.FC = () => {
               <EmptyState icon={CubesIcon} titleText={t('installed_empty_title_subs')}>
                 <EmptyStateBody>{t('installed_empty_body_subs')}</EmptyStateBody>
               </EmptyState>
+            )}
+
+            {loaded && activeFilter && (
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="info"
+                isInline
+                title={t('installed_filter_active', {
+                  filter: t(`installed_filter_${activeFilter}`),
+                  count: visibleRows.length,
+                })}
+                actionLinks={
+                  <Button variant="link" isInline onClick={clearFilter}>
+                    {t('installed_filter_clear')}
+                  </Button>
+                }
+              />
+            )}
+
+            {loaded && rows.length > 0 && visibleRows.length === 0 && activeFilter && (
+              <EmptyState icon={CubesIcon} titleText={t('installed_filter_empty')} />
             )}
 
             {loaded && rows.length > 0 && (

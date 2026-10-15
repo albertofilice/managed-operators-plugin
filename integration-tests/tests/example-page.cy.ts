@@ -69,13 +69,18 @@ describe('Managed operators plugin', () => {
     cy.logout();
   });
 
+  it('shows the overview page (requires RHACM and ACM perspective)', () => {
+    cy.visit('/multicloud/ecosystem/managed-operators-overview');
+    cy.get('title', { timeout: 120000 }).should('contain', 'Managed operators overview');
+  });
+
   it('shows the installed operators page (requires RHACM and ACM perspective)', () => {
     cy.visit('/multicloud/ecosystem/installed-operators');
-    cy.get('title', { timeout: 120000 }).should('contain', 'Managed cluster operators');
+    cy.get('title', { timeout: 120000 }).should('contain', 'Managed cluster operators (OLM)');
   });
 
   it('shows the install operators page (requires RHACM and ACM perspective)', () => {
     cy.visit('/multicloud/ecosystem/install-operators');
-    cy.get('title', { timeout: 120000 }).should('contain', 'Install operators');
+    cy.get('title', { timeout: 120000 }).should('contain', 'Install operators (OperatorPolicy)');
   });
 });

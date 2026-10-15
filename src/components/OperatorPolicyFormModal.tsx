@@ -30,9 +30,13 @@ import type {
 } from '../types/operatorPolicy';
 import { TrashIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
-import { PLUGIN_CREATED_ANNOTATION } from '../constants/operatorPolicyPlugin';
+import {
+  AUTO_APPROVE_REGEX_ANNOTATION,
+  PLUGIN_CREATED_ANNOTATION,
+} from '../constants/operatorPolicyPlugin';
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
+import { ensureAutoApproveJob } from '../utils/autoApproveJob';
 import type { OperatorPolicySubscriptionPrefill } from '../utils/installOperatorsPrefill';
 import { OP_POLICY_MANAGED_ANNOTATION } from '../utils/operatorPolicySubscriptionRef';
 
@@ -54,6 +58,8 @@ export type OperatorPolicyFormModalProps = {
   /** If true, do not POST/PUT. Show generated YAML instead (GitOps-first). */
   generateOnly?: boolean;
   clusterName: string;
+  /** Create mode only: also apply the same OperatorPolicy to these Ready clusters (bulk install). */
+  additionalClusters?: string[];
   selectedPkg: PackageManifestKind | null;
   catalogSources: CatalogSourceKind[];
   loadingCs: boolean;
@@ -84,6 +90,28 @@ function defaultMatchLabels(): MatchLabelRow[] {
  * Installed Operators / Overview treat a row as governance-managed when the Subscription has this
  * annotation (ACM usually sets it; we set it here so the UI updates without waiting on the controller).
  */
+function isNotFound(e: unknown): boolean {
+  const code = (e as { code?: number })?.code;
+  return code === 404 || /not found|NotFound/i.test(String(e));
+}
+
+/** The governance controller creates the Subscription shortly after the policy: retry while 404. */
+async function linkSubscriptionWhenCreated(
+  options: Parameters<typeof patchSubscriptionOperatorPolicyManagedLink>[0],
+): Promise<'linked' | 'pending'> {
+  const tries = 8;
+  for (let i = 0; i < tries; i += 1) {
+    try {
+      await patchSubscriptionOperatorPolicyManagedLink(options);
+      return 'linked';
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
+  return 'pending';
+}
+
 async function patchSubscriptionOperatorPolicyManagedLink(options: {
   clusterName: string;
   subscriptionNamespace: string;
@@ -129,6 +157,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   mode,
   generateOnly = false,
   clusterName,
+  additionalClusters,
   selectedPkg,
   catalogSources,
   loadingCs,
@@ -150,6 +179,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   const [upgradeApproval, setUpgradeApproval] = React.useState<'Automatic' | 'None'>('Automatic');
   const [startingCSV, setStartingCSV] = React.useState('');
   const [versionsText, setVersionsText] = React.useState('');
+  const [autoApproveRegex, setAutoApproveRegex] = React.useState('');
   const [severity, setSeverity] = React.useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [complianceType, setComplianceType] = React.useState<'musthave' | 'mustnothave'>(
     'musthave',
@@ -233,6 +263,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       setUpgradeApproval('Automatic');
       setStartingCSV('');
       setVersionsText('');
+      setAutoApproveRegex('');
       setSeverity('medium');
       setComplianceType('musthave');
       setCcCatalog('Compliant');
@@ -289,6 +320,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     setUpgradeApproval(spec.upgradeApproval === 'None' ? 'None' : 'Automatic');
     setStartingCSV((sub.startingCSV ?? '').trim());
     setVersionsText((spec.versions ?? []).join(', '));
+    setAutoApproveRegex(meta?.annotations?.[AUTO_APPROVE_REGEX_ANNOTATION] ?? '');
     setSeverity(spec.severity ?? 'medium');
     setComplianceType(spec.complianceType === 'mustnothave' ? 'mustnothave' : 'musthave');
     const cc = spec.complianceConfig;
@@ -359,6 +391,22 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     }
     const hasOg = ogName.trim() || Object.keys(matchLabels).length > 0;
 
+    // Users sometimes paste an escaped form (\\.); a regex for a CSV name never needs a literal backslash.
+    const regex = !(upgradeApproval === 'Automatic' && versions.length > 0)
+      ? ''
+      : autoApproveRegex.trim().replace(/\\\\/g, '\\');
+    if (regex) {
+      try {
+        new RegExp(regex);
+      } catch (e) {
+        throw new Error(
+          t('policy_modal_err_auto_approve_regex', {
+            detail: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      }
+    }
+
     const spec: OperatorPolicyKind['spec'] = {
       remediationAction: remediation,
       severity,
@@ -426,6 +474,14 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
       delete (body as { status?: unknown }).status;
     }
 
+    const annotations = { ...(body.metadata?.annotations ?? {}) };
+    if (regex) {
+      annotations[AUTO_APPROVE_REGEX_ANNOTATION] = regex;
+    } else {
+      delete annotations[AUTO_APPROVE_REGEX_ANNOTATION];
+    }
+    body.metadata = { ...(body.metadata ?? {}), annotations };
+
     return body;
   };
 
@@ -433,6 +489,9 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     const body = buildBody();
     setPolicyYaml(stringifyYaml(body).trimEnd());
   };
+
+  const autoApproveAvailable =
+    upgradeApproval === 'Automatic' && versionsText.split(/[\s,]+/).some((v) => v.trim());
 
   const submit = async () => {
     if (!clusterName) return;
@@ -512,54 +571,84 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     const effectivePolicyNs = (body.metadata?.namespace ?? policyNamespace).trim();
     const effectivePolicyName = (body.metadata?.name ?? policyName).trim();
 
-    const base = clusterApiPath(
-      clusterName,
-      `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(effectivePolicyNs)}/operatorpolicies`,
-    );
-    const url = mode === 'edit' ? `${base}/${encodeURIComponent(effectivePolicyName)}` : base;
-
     const polNs = effectivePolicyNs;
     const polNm = effectivePolicyName;
     const subSpec = body.spec?.subscription;
 
-    try {
+    const applyToCluster = async (cluster: string): Promise<string> => {
+      const perClusterNs = polNs === clusterName ? cluster : polNs;
+      const clusterBody: OperatorPolicyKind =
+        cluster === clusterName
+          ? body
+          : {
+              ...body,
+              metadata: { ...(body.metadata ?? {}), namespace: perClusterNs },
+            };
+      const base = clusterApiPath(
+        cluster,
+        `/apis/policy.open-cluster-management.io/v1beta1/namespaces/${encodeURIComponent(perClusterNs)}/operatorpolicies`,
+      );
+      const url = mode === 'edit' ? `${base}/${encodeURIComponent(polNm)}` : base;
       if (mode === 'create') {
-        await consoleFetchJSON.post(url, body);
+        await consoleFetchJSON.post(url, clusterBody);
       } else {
-        await consoleFetchJSON.put(url, body);
+        await consoleFetchJSON.put(url, clusterBody);
       }
 
-      let successMsg =
+      let msg =
         mode === 'create'
-          ? t('policy_modal_success_created', {
-              namespace: polNs,
-              name: polNm,
-              cluster: clusterName,
-            })
-          : t('policy_modal_success_updated', {
-              namespace: polNs,
-              name: polNm,
-              cluster: clusterName,
-            });
+          ? t('policy_modal_success_created', { namespace: perClusterNs, name: polNm, cluster })
+          : t('policy_modal_success_updated', { namespace: perClusterNs, name: polNm, cluster });
 
-      if (subSpec?.name && subSpec?.namespace && polNs && polNm) {
+      if (subSpec?.name && subSpec?.namespace && perClusterNs && polNm) {
         try {
-          await patchSubscriptionOperatorPolicyManagedLink({
-            clusterName,
+          const linked = await linkSubscriptionWhenCreated({
+            clusterName: cluster,
             subscriptionNamespace: subSpec.namespace,
             subscriptionName: subSpec.name,
-            policyNamespace: polNs,
+            policyNamespace: perClusterNs,
             policyName: polNm,
           });
+          if (linked === 'pending') {
+            msg = `${msg} ${t('policy_modal_info_sub_pending')}`;
+          }
         } catch (linkErr) {
-          successMsg = `${successMsg} ${t('policy_modal_warn_sub_link', { error: String(linkErr) })}`;
+          msg = `${msg} ${t('policy_modal_warn_sub_link', { error: String(linkErr) })}`;
         }
       }
+      if (autoApproveRegex.trim() && activeTabKey === 'form') {
+        try {
+          await ensureAutoApproveJob(cluster);
+        } catch (jobErr) {
+          msg = `${msg} ${t('policy_modal_warn_auto_approve_job', { error: String(jobErr) })}`;
+        }
+      }
+      return msg;
+    };
 
-      onSuccess?.(successMsg);
+    const targets =
+      mode === 'create'
+        ? [clusterName, ...(additionalClusters ?? []).filter((c) => c && c !== clusterName)]
+        : [clusterName];
+
+    try {
+      const okMessages: string[] = [];
+      const failures: string[] = [];
+      for (const cluster of targets) {
+        try {
+          okMessages.push(await applyToCluster(cluster));
+        } catch (e) {
+          failures.push(`${cluster}: ${String(e)}`);
+        }
+      }
+      if (okMessages.length > 0) {
+        onSuccess?.(okMessages.join('\n'));
+      }
+      if (failures.length > 0) {
+        setSubmitError(t('policy_modal_bulk_failures', { failures: failures.join('\n') }));
+        return;
+      }
       onClose();
-    } catch (e) {
-      setSubmitError(String(e));
     } finally {
       setSubmitting(false);
     }
@@ -972,6 +1061,27 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                     onChange={(_e, v) => setVersionsText(v)}
                   />
                   <FormHelperText>{t('policy_modal_helper_allowed_versions')}</FormHelperText>
+                </FormGroup>
+                <FormGroup label={t('policy_modal_label_auto_approve')} fieldId="auto-approve">
+                  <TextInput
+                    id="auto-approve"
+                    value={autoApproveRegex}
+                    onChange={(_e, v) => setAutoApproveRegex(v)}
+                    isDisabled={!autoApproveAvailable}
+                    placeholder="^my-operator\.v4\.20\..*$"
+                  />
+                  <FormHelperText>
+                    {autoApproveAvailable
+                      ? t('policy_modal_helper_auto_approve')
+                      : t('policy_modal_helper_auto_approve_unavailable')}{' '}
+                    <a
+                      href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions/Cheatsheet"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {t('policy_modal_link_regex_help')}
+                    </a>
+                  </FormHelperText>
                 </FormGroup>
               </Form>
             </Tab>
