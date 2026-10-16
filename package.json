@@ -25,7 +25,10 @@
     "cypress-merge": "mochawesome-merge ./integration-tests/screenshots/cypress_report*.json > ./integration-tests/screenshots/cypress.json",
     "cypress-generate": "marge -o ./integration-tests/screenshots/ -f cypress-report -t 'managed-operators-plugin Cypress Test Results' -p 'managed-operators-plugin Cypress Test Results' --showPassed false --assetsDir ./integration-tests/screenshots/cypress/assets ./integration-tests/screenshots/cypress.json",
     "cypress-postreport": "yarn cypress-merge && yarn cypress-generate",
-    "webpack": "node -r ts-node/register ./node_modules/.bin/webpack"
+    "webpack": "node -r ts-node/register ./node_modules/.bin/webpack",
+    "test-unit": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' node -r ts-node/register/transpile-only --test tests/unit/*.test.ts",
+    "test-cypress-deployed": "cd integration-tests && PLUGIN_ALREADY_DEPLOYED=true CYPRESS_PLUGIN_ALREADY_DEPLOYED=true node --max-old-space-size=4096 ../node_modules/.bin/cypress run --browser ${BRIDGE_E2E_BROWSER_NAME:-electron}",
+    "start-local": "MOP_LOCAL_DEV=true yarn webpack serve --progress"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",

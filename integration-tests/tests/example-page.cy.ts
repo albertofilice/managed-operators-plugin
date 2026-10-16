@@ -2,6 +2,7 @@ import { checkErrors } from '../support';
 
 const PLUGIN_NAME = 'managed-operators-plugin';
 const PLUGIN_PULL_SPEC = Cypress.env('PLUGIN_TEMPLATE_PULL_SPEC');
+const SKIP_DEPLOY = Cypress.env('PLUGIN_ALREADY_DEPLOYED') === 'true';
 
 export const isLocalDevEnvironment = Cypress.config('baseUrl')!.includes('localhost');
 
@@ -46,6 +47,10 @@ describe('Managed operators plugin', () => {
   before(() => {
     cy.login();
     cy.get(`[data-test="tour-step-footer-secondary"]`).contains('Skip tour').click();
+    if (SKIP_DEPLOY) {
+      // Plugin already deployed on the target cluster (e.g. `PLUGIN_ALREADY_DEPLOYED=true`).
+      return;
+    }
     if (!isLocalDevEnvironment) {
       cy.exec('cd .. && ./install_helm.sh', { failOnNonZeroExit: false }).then((result) => {
         cy.log(result.stderr);
@@ -61,6 +66,10 @@ describe('Managed operators plugin', () => {
   });
 
   after(() => {
+    if (SKIP_DEPLOY) {
+      cy.logout();
+      return;
+    }
     if (!isLocalDevEnvironment) {
       deleteHelmChart('/tmp/helm');
     } else {
@@ -82,5 +91,25 @@ describe('Managed operators plugin', () => {
   it('shows the install operators page (requires RHACM and ACM perspective)', () => {
     cy.visit('/multicloud/ecosystem/install-operators');
     cy.get('title', { timeout: 120000 }).should('contain', 'Install operators (OperatorPolicy)');
+  });
+
+  it('overview renders the donut cards and summary', () => {
+    cy.visit('/multicloud/ecosystem/managed-operators-overview');
+    cy.get('[data-test="managed-operators-overview"]', { timeout: 120000 }).should('exist');
+    cy.get('.managed-operators-plugin__overview-card', { timeout: 120000 }).should(
+      'have.length.at.least',
+      4,
+    );
+  });
+
+  it('overview drill-down: ?filter= shows the active filter banner and can be cleared', () => {
+    cy.visit('/multicloud/ecosystem/installed-operators?filter=upgrade_pending');
+    cy.contains('Clear filter', { timeout: 120000 }).should('be.visible').click();
+    cy.location('search').should('not.contain', 'filter=');
+  });
+
+  it('install operators: cluster selector is available', () => {
+    cy.visit('/multicloud/ecosystem/install-operators');
+    cy.get('#cluster-select', { timeout: 120000 }).should('exist');
   });
 });

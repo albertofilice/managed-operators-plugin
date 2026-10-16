@@ -20,3 +20,5 @@ if ! yarn dedupe --strategy highest --check ; then
   git --no-pager diff
   exit 1
 fi
+
+yarn test-unit
