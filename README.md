@@ -9,6 +9,7 @@ Dynamic console plugin for **Red Hat Advanced Cluster Management (RHACM)** / **m
 - **Install operators** (`/multicloud/ecosystem/install-operators`): guided install flow aligned with OperatorPolicy and catalogs, with both a guided form and a **read/write YAML tab** when creating/editing OperatorPolicy. For GitOps-first teams, you can also **Generate YAML** (no apply) for ready-to-commit manifests.
 - **Bulk install**: on **Install operators**, tick additional Ready clusters to create the same OperatorPolicy on each; failures are reported per cluster.
 - **Minor-line auto-approve**: optional regex field on a policy created from this plugin (annotation `managed-operators-plugin.openshift.io/auto-approve-regex`). Saving it installs, on that cluster and through the MCE proxy, a small CronJob (namespace `managed-operators-auto-approve`) that adds the CSV of a matching pending InstallPlan (same installed major.minor only) to `spec.versions` and writes a `last-auto-approved` audit annotation. Only policies carrying the plugin-created annotation are handled, so Policies delivered by RHACM/GitOps are never modified. The field is enabled only with `upgradeApproval: Automatic` **and** a non-empty allowed-versions list (the controller approves upgrades only with `Automatic`, restricted to `spec.versions`; `Automatic` without versions approves everything, and `None` uses the manual **Approve InstallPlan** button). The user saving the policy needs rights to create a ClusterRole/ClusterRoleBinding on the target cluster.
+- **Read-only mode** (`plugin.readOnly=true` in the Helm chart): full visibility of every installed operator, but no write action in the UI — Installed Operators hides approve / edit / uninstall / migrate, and **Install operators** offers only **Generate YAML** (nothing is applied, bulk install is hidden). The chart publishes the flag as `config.json` and rolls the pods when it changes. It is a UI-level mode: pair it with read-only RBAC for real enforcement. If the config cannot be read the plugin fails closed (read-only); a chart without `config.json` stays writable.
 
 All three pages are registered in `console-extensions.json` (routes + **Ecosystem** nav). **Overview** is the first menu item and the natural entry point for the plugin; it ships with the same build as **Installed Operators** and **Install operators** once you deploy the plugin.
 
@@ -145,7 +146,7 @@ yarn install --immutable
   yarn lint
   ```
 
-- **Unit tests** (no cluster needed; Node's built-in runner): they cover the drill-down filters and run the real auto-approve shell script against a fake `oc` (match, mismatch, major jump, non-plugin policies, `None`, `Automatic` without versions):
+- **Unit tests** (no cluster needed; Node's built-in runner): they cover the drill-down filters, the read-only config (including the Helm output) and run the real auto-approve shell script against a fake `oc` (match, mismatch, major jump, non-plugin policies, `None`, `Automatic` without versions):
 
   ```bash
   yarn test-unit
@@ -193,7 +194,7 @@ Log in to your registry (`podman login quay.io`, etc.) before pushing.
 
 ### 2. Install or upgrade with Helm
 
-The chart is `charts/openshift-console-plugin/`. Set **`plugin.image`** to the same tag you pushed. Defaults for plugin name, TLS, and the console patch job are in `charts/openshift-console-plugin/values.yaml`.
+The chart is `charts/openshift-console-plugin/`. Set **`plugin.image`** to the same tag you pushed. Defaults for plugin name, TLS, `plugin.readOnly` and the console patch job are in `charts/openshift-console-plugin/values.yaml`.
 
 **Using `--set`:**
 

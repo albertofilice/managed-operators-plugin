@@ -247,5 +247,7 @@
   "policy_modal_warn_auto_approve_job": "Policy saved, but the auto-approve job could not be installed: {{error}}",
   "policy_modal_info_sub_pending": "The Subscription is not created yet; the governance controller will create and link it shortly.",
   "policy_modal_link_regex_help": "Regular expression cheat sheet",
-  "policy_modal_helper_auto_approve_unavailable": "Available only with upgrade approval Automatic and a non-empty allowed versions list. Automatic without versions already approves every upgrade; None needs the manual Approve InstallPlan button on Installed Operators."
+  "policy_modal_helper_auto_approve_unavailable": "Available only with upgrade approval Automatic and a non-empty allowed versions list. Automatic without versions already approves every upgrade; None needs the manual Approve InstallPlan button on Installed Operators.",
+  "readonly_banner_installed": "Read-only mode: you can inspect every installed operator, but changes (approve, edit, uninstall, migrate) are disabled.",
+  "readonly_banner_install": "Read-only mode: nothing is applied from this page. Use Generate YAML to get a ready-to-commit OperatorPolicy manifest."
 }

@@ -33,6 +33,7 @@ import {
   type OperatorRow,
 } from '../hooks/useManagedClusterSubscriptions';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
+import { usePluginConfig } from '../utils/pluginConfig';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
 import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
@@ -122,6 +123,7 @@ const MyCustomPage: React.FC = () => {
   const { t } = useTranslation('plugin__managed-operators-plugin');
   const location = useLocation();
   const navigate = useNavigate();
+  const { readOnly } = usePluginConfig();
   const [clusters, clustersLoaded, clustersError] =
     useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
@@ -473,6 +475,15 @@ const MyCustomPage: React.FC = () => {
               </EmptyState>
             )}
 
+            {readOnly && (
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="info"
+                isInline
+                title={t('readonly_banner_installed')}
+              />
+            )}
+
             {loaded && activeFilter && (
               <Alert
                 className="pf-v6-u-mb-md"
@@ -535,7 +546,9 @@ const MyCustomPage: React.FC = () => {
                                 <Th>{t('installed_col_approval')}</Th>
                                 <Th>{t('installed_col_sub_status')}</Th>
                                 <Th>{t('installed_col_upgrade')}</Th>
-                                <Th modifier="nowrap">{t('installed_col_actions')}</Th>
+                                {!readOnly && (
+                                  <Th modifier="nowrap">{t('installed_col_actions')}</Th>
+                                )}
                               </Tr>
                             </Thead>
                             <Tbody>
@@ -618,105 +631,111 @@ const MyCustomPage: React.FC = () => {
                                     <Td dataLabel={t('installed_col_upgrade')}>
                                       {r.upgradePending ?? '—'}
                                     </Td>
-                                    <Td dataLabel={t('installed_col_actions')} modifier="nowrap">
-                                      <div
-                                        className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
-                                        style={{ gap: 'var(--pf-t--global--spacer--md)' }}
-                                      >
-                                        {pluginMetaLoading && r.operatorPolicyRef ? (
-                                          <Spinner
-                                            size="sm"
-                                            aria-label={t('installed_spinner_policy_aria')}
-                                          />
-                                        ) : (
-                                          <>
-                                            {r.installPlanApprovalRequired && r.installPlanRef && (
-                                              <Button
-                                                variant="primary"
-                                                size="sm"
-                                                onClick={() => openApprove(r)}
-                                              >
-                                                {t('installed_btn_approve_installplan')}
-                                              </Button>
-                                            )}
-                                            {showEdit && (
-                                              <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => openEditPolicy(r)}
-                                              >
-                                                {t('installed_btn_edit_policy')}
-                                              </Button>
-                                            )}
-                                            {showUninstall && (
-                                              <Button
-                                                variant="danger"
-                                                size="sm"
-                                                onClick={() => openUninstall(r)}
-                                              >
-                                                {t('installed_btn_uninstall')}
-                                              </Button>
-                                            )}
-                                            {showMigrate && (
-                                              <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => openMigrate(r)}
-                                              >
-                                                {t('installed_btn_migrate')}
-                                              </Button>
-                                            )}
-                                            {showMigrationPending && (
-                                              <span className="pf-v6-u-font-size-sm pf-v6-u-text-color-subtle">
-                                                <Label color="blue" isCompact>
-                                                  {t('installed_label_migration_pending')}
-                                                </Label>{' '}
+                                    {!readOnly && (
+                                      <Td dataLabel={t('installed_col_actions')} modifier="nowrap">
+                                        <div
+                                          className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
+                                          style={{ gap: 'var(--pf-t--global--spacer--md)' }}
+                                        >
+                                          {pluginMetaLoading && r.operatorPolicyRef ? (
+                                            <Spinner
+                                              size="sm"
+                                              aria-label={t('installed_spinner_policy_aria')}
+                                            />
+                                          ) : (
+                                            <>
+                                              {r.installPlanApprovalRequired &&
+                                                r.installPlanRef && (
+                                                  <Button
+                                                    variant="primary"
+                                                    size="sm"
+                                                    onClick={() => openApprove(r)}
+                                                  >
+                                                    {t('installed_btn_approve_installplan')}
+                                                  </Button>
+                                                )}
+                                              {showEdit && (
                                                 <Button
-                                                  variant="link"
-                                                  isInline
-                                                  component="a"
-                                                  href={
-                                                    r.installPrefillQuery
-                                                      ? (() => {
-                                                          const p = r.installPrefillQuery;
-                                                          const q = new URLSearchParams();
-                                                          q.set(MOP_Q.cluster, r.clusterKey);
-                                                          q.set(MOP_Q.package, p.packageName);
-                                                          q.set(
-                                                            MOP_Q.subNs,
-                                                            p.subscriptionNamespace,
-                                                          );
-                                                          if (p.channel)
-                                                            q.set(MOP_Q.channel, p.channel);
-                                                          if (p.source)
-                                                            q.set(MOP_Q.catalogSource, p.source);
-                                                          if (p.sourceNamespace) {
-                                                            q.set(
-                                                              MOP_Q.catalogSourceNs,
-                                                              p.sourceNamespace,
-                                                            );
-                                                          }
-                                                          q.set(
-                                                            MOP_Q.approval,
-                                                            p.installPlanApproval,
-                                                          );
-                                                          if (p.startingCSV) {
-                                                            q.set(MOP_Q.startingCsv, p.startingCSV);
-                                                          }
-                                                          q.set(MOP_Q.policyNs, r.clusterKey);
-                                                          return `/multicloud/ecosystem/install-operators?${q.toString()}`;
-                                                        })()
-                                                      : '/multicloud/ecosystem/install-operators'
-                                                  }
+                                                  variant="secondary"
+                                                  size="sm"
+                                                  onClick={() => openEditPolicy(r)}
                                                 >
-                                                  {t('installed_btn_create_policy')}
+                                                  {t('installed_btn_edit_policy')}
                                                 </Button>
-                                              </span>
-                                            )}
-                                          </>
-                                        )}
-                                      </div>
-                                    </Td>
+                                              )}
+                                              {showUninstall && (
+                                                <Button
+                                                  variant="danger"
+                                                  size="sm"
+                                                  onClick={() => openUninstall(r)}
+                                                >
+                                                  {t('installed_btn_uninstall')}
+                                                </Button>
+                                              )}
+                                              {showMigrate && (
+                                                <Button
+                                                  variant="secondary"
+                                                  size="sm"
+                                                  onClick={() => openMigrate(r)}
+                                                >
+                                                  {t('installed_btn_migrate')}
+                                                </Button>
+                                              )}
+                                              {showMigrationPending && (
+                                                <span className="pf-v6-u-font-size-sm pf-v6-u-text-color-subtle">
+                                                  <Label color="blue" isCompact>
+                                                    {t('installed_label_migration_pending')}
+                                                  </Label>{' '}
+                                                  <Button
+                                                    variant="link"
+                                                    isInline
+                                                    component="a"
+                                                    href={
+                                                      r.installPrefillQuery
+                                                        ? (() => {
+                                                            const p = r.installPrefillQuery;
+                                                            const q = new URLSearchParams();
+                                                            q.set(MOP_Q.cluster, r.clusterKey);
+                                                            q.set(MOP_Q.package, p.packageName);
+                                                            q.set(
+                                                              MOP_Q.subNs,
+                                                              p.subscriptionNamespace,
+                                                            );
+                                                            if (p.channel)
+                                                              q.set(MOP_Q.channel, p.channel);
+                                                            if (p.source)
+                                                              q.set(MOP_Q.catalogSource, p.source);
+                                                            if (p.sourceNamespace) {
+                                                              q.set(
+                                                                MOP_Q.catalogSourceNs,
+                                                                p.sourceNamespace,
+                                                              );
+                                                            }
+                                                            q.set(
+                                                              MOP_Q.approval,
+                                                              p.installPlanApproval,
+                                                            );
+                                                            if (p.startingCSV) {
+                                                              q.set(
+                                                                MOP_Q.startingCsv,
+                                                                p.startingCSV,
+                                                              );
+                                                            }
+                                                            q.set(MOP_Q.policyNs, r.clusterKey);
+                                                            return `/multicloud/ecosystem/install-operators?${q.toString()}`;
+                                                          })()
+                                                        : '/multicloud/ecosystem/install-operators'
+                                                    }
+                                                  >
+                                                    {t('installed_btn_create_policy')}
+                                                  </Button>
+                                                </span>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                      </Td>
+                                    )}
                                   </Tr>
                                 );
                               })}

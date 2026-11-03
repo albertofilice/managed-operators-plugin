@@ -30,6 +30,7 @@ import type { OperatorPolicyKind } from '../types/operatorPolicy';
 import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
 import { clusterApiPath } from '../utils/clusterApi';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
+import { usePluginConfig } from '../utils/pluginConfig';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import {
   parseInstallOperatorsPrefill,
@@ -92,6 +93,7 @@ function packageRowKey(pm: PackageManifestKind): string {
 const InstallOperatorsPage: React.FC = () => {
   const { t } = useTranslation('plugin__managed-operators-plugin');
   const navigate = useNavigate();
+  const { readOnly } = usePluginConfig();
   const location = useLocation();
   const [clusters] = useK8sWatchResource<ManagedClusterKind[]>(managedClusterWatch);
 
@@ -165,11 +167,13 @@ const InstallOperatorsPage: React.FC = () => {
     setMigrationPrefill(urlPrefillToModalPrefill(urlPrefill));
     setSubmitOk(null);
     setSelectedPkg(pm);
+    setModalGenerateOnly(readOnly);
     setModalMode('create');
     setEditPolicy(null);
     setModalOpen(true);
     navigate({ pathname: location.pathname, search: '' }, { replace: true });
   }, [
+    readOnly,
     urlPrefill,
     selectedCluster,
     loadingPm,
@@ -365,7 +369,7 @@ const InstallOperatorsPage: React.FC = () => {
                   ))}
                 </FormSelect>
               </FormGroup>
-              {selectedCluster && clusterNames.length > 1 && (
+              {!readOnly && selectedCluster && clusterNames.length > 1 && (
                 <FormGroup
                   role="group"
                   label={t('install_label_extra_clusters')}
@@ -428,6 +432,15 @@ const InstallOperatorsPage: React.FC = () => {
                 </FormSelect>
               </FormGroup>
             </Form>
+
+            {readOnly && (
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="info"
+                isInline
+                title={t('readonly_banner_install')}
+              />
+            )}
 
             {!selectedCluster && (
               <p className="pf-v6-u-text-color-subtle">{t('install_choose_cluster_hint')}</p>
@@ -508,19 +521,21 @@ const InstallOperatorsPage: React.FC = () => {
                               className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
                               style={{ columnGap: 'var(--pf-t--global--spacer--md)' }}
                             >
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => openInstallOrEdit(pm)}
-                                className="pf-v6-u-white-space-nowrap"
-                              >
-                                {hasPlugin
-                                  ? t('install_btn_edit_policy')
-                                  : t('install_btn_install')}
-                              </Button>
-                              {!hasPlugin && (
+                              {!readOnly && (
                                 <Button
-                                  variant="tertiary"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => openInstallOrEdit(pm)}
+                                  className="pf-v6-u-white-space-nowrap"
+                                >
+                                  {hasPlugin
+                                    ? t('install_btn_edit_policy')
+                                    : t('install_btn_install')}
+                                </Button>
+                              )}
+                              {(readOnly || !hasPlugin) && (
+                                <Button
+                                  variant={readOnly ? 'secondary' : 'tertiary'}
                                   size="sm"
                                   onClick={() => openGenerateYaml(pm)}
                                   icon={<CodeIcon />}
@@ -564,7 +579,7 @@ const InstallOperatorsPage: React.FC = () => {
         isOpen={modalOpen}
         onClose={closeModal}
         mode={modalMode}
-        generateOnly={modalGenerateOnly}
+        generateOnly={modalGenerateOnly || readOnly}
         clusterName={selectedCluster}
         additionalClusters={
           modalMode === 'create' && !modalGenerateOnly ? extraClusters : undefined

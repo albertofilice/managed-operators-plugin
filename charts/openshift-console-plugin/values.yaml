@@ -46,6 +46,9 @@ plugin:
       timeoutSeconds: 2
       failureThreshold: 3
   basePath: /
+  # Read-only mode: full visibility of installed operators, no write actions in the UI;
+  # Install operators offers only "Generate YAML" (no apply). UI-level: enforce with RBAC too.
+  readOnly: false
   serviceAccount:
     create: true
     annotations: {}

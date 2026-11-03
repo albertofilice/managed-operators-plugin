@@ -15,6 +15,9 @@ spec:
     metadata:
       labels:
         {{- include "openshift-console-plugin.labels" . | nindent 8 }}
+      annotations:
+        # Roll the pods when the nginx / runtime config (e.g. readOnly) changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "openshift-console-plugin.serviceAccountName" . }}
       {{- with .Values.plugin.imagePullSecrets }}
@@ -63,6 +66,10 @@ spec:
               readOnly: true
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+            - name: nginx-conf
+              readOnly: true
+              mountPath: /etc/plugin-config/config.json
+              subPath: config.json
       volumes:
         - name: {{ template "openshift-console-plugin.certificateSecret" . }}
           secret:

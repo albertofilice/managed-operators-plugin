@@ -78,6 +78,15 @@ const config: Configuration = {
     // Local testing against the stock OKD/OpenShift console (no ACM perspective): `yarn start-local`
     // serves the manifest without `perspective: "acm"` so the pages render at their routes.
     setupMiddlewares: (middlewares) => {
+      // Mirrors the Helm-published runtime config; `MOP_READ_ONLY=true yarn start-local` to try it.
+      middlewares.unshift({
+        name: 'mop-config',
+        path: '/config.json',
+        middleware: (_req, res) => {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ readOnly: process.env.MOP_READ_ONLY === 'true' }));
+        },
+      });
       if (process.env.MOP_LOCAL_DEV === 'true') {
         middlewares.unshift({
           name: 'mop-local-manifest',
