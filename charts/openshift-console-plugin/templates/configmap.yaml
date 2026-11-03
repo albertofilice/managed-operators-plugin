@@ -25,5 +25,13 @@ data:
           default_type text/plain;
           return 200 "ok\n";
         }
+
+        location = /config.json {
+          default_type application/json;
+          add_header Cache-Control "no-store";
+          alias /etc/plugin-config/config.json;
+        }
       }
     }
+  config.json: |
+    {"readOnly": {{ .Values.plugin.readOnly | default false }}}

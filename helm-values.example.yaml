@@ -14,3 +14,11 @@ plugin:
     patchConsoles:
       # Set to false if you enable the plugin on the Console operator yourself (GitOps).
       enabled: true
+
+# --- Alternative: let OpenShift build the image from Git (no external registry) ---
+# Uncomment and remove `plugin.image` above; `plugin.image` is ignored when build.enabled is true.
+# build:
+#   enabled: true
+#   source:
+#     uri: https://github.com/albertofilice/managed-operators-plugin.git
+#     ref: main

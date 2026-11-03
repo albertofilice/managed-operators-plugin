@@ -1,4 +1,25 @@
 ---
+# Build the image on the cluster (OpenShift BuildConfig + ImageStream) instead of pulling
+# `plugin.image`. When enabled, `plugin.image` is ignored and the Deployment uses the
+# internal-registry image built from `build.source`.
+build:
+  enabled: false
+  source:
+    uri: https://github.com/albertofilice/managed-operators-plugin.git
+    ref: main
+    contextDir: ""
+    # Name of a Secret (kubernetes.io/basic-auth or ssh-auth) for a private repository.
+    secretName: ""
+  dockerfilePath: Dockerfile
+  outputTag: latest
+  historyLimit: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1Gi
+    limits:
+      memory: 4Gi
+
 # Defaults match package.json → consolePlugin (managed-operators-plugin).
 plugin:
   name: managed-operators-plugin
@@ -46,6 +67,9 @@ plugin:
       timeoutSeconds: 2
       failureThreshold: 3
   basePath: /
+  # Read-only mode: full visibility of installed operators, no write actions in the UI;
+  # Install operators offers only "Generate YAML" (no apply). UI-level: enforce with RBAC too.
+  readOnly: false
   serviceAccount:
     create: true
     annotations: {}
