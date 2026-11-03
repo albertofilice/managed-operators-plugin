@@ -15,3 +15,12 @@ Enable plugin.jobs.patchConsoles.enabled to run a Job that patches the cluster C
 Verify in the OpenShift console under Administration → Cluster Settings → Console plugins, or:
 
   oc get consoleplugin {{ include "openshift-console-plugin.name" . }} -n {{ .Release.Namespace }}
+
+{{- if .Values.build.enabled }}
+
+The image is built on the cluster from {{ .Values.build.source.uri }} ({{ .Values.build.source.ref }}).
+Follow the build, the pods start once the first build has pushed the image:
+
+  oc logs -f bc/{{ include "openshift-console-plugin.name" . }} -n {{ .Release.Namespace }}
+  oc start-build {{ include "openshift-console-plugin.name" . }} -n {{ .Release.Namespace }}   # rebuild
+{{- end }}

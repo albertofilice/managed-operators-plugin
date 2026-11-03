@@ -1,0 +1,37 @@
+{{- if .Values.build.enabled }}
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: {{ template "openshift-console-plugin.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openshift-console-plugin.labels" . | nindent 4 }}
+spec:
+  runPolicy: Serial
+  source:
+    type: Git
+    git:
+      uri: {{ .Values.build.source.uri | quote }}
+      ref: {{ .Values.build.source.ref | quote }}
+    {{- with .Values.build.source.contextDir }}
+    contextDir: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.build.source.secretName }}
+    sourceSecret:
+      name: {{ . | quote }}
+    {{- end }}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: {{ .Values.build.dockerfilePath | quote }}
+  output:
+    to:
+      kind: ImageStreamTag
+      name: {{ printf "%s:%s" (include "openshift-console-plugin.name" .) .Values.build.outputTag | quote }}
+  resources:
+    {{- toYaml .Values.build.resources | nindent 4 }}
+  successfulBuildsHistoryLimit: {{ .Values.build.historyLimit }}
+  failedBuildsHistoryLimit: {{ .Values.build.historyLimit }}
+  triggers:
+    - type: ConfigChange
+{{- end }}

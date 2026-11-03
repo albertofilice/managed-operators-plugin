@@ -84,9 +84,11 @@ Calls use `consoleFetchJSON` from the dynamic plugin SDK. Cluster API paths are 
 
 ## Requirements
 
-- **OpenShift** with the console and dynamic plugins enabled.
-- **RHACM / MCE** with the ACM perspective in the console (the plugin registers with `perspective: "acm"`).
-- Kubernetes/OpenShift permissions to read Subscription, CSV, InstallPlan, CatalogSource, OperatorPolicy, and to use the proxy APIs toward managed clusters (per your environment’s policy).
+- **OpenShift** with the console and dynamic plugins enabled (developed and tested on console 4.22 / RHACM 2.17; the plugin declares no minimum version, so older releases are untested).
+- **RHACM / MCE** with the ACM perspective in the console (the plugin registers with `perspective: "acm"`). Managed-cluster data goes through the MCE `managedclusterproxy`.
+- On each **managed cluster**: OLM (`operators.coreos.com`, `packages.operators.coreos.com`) and the `OperatorPolicy` API (`policy.open-cluster-management.io/v1beta1`, served by the RHACM config-policy-controller).
+- **To install the chart**: cluster-admin (the chart creates a ClusterRole/ClusterRoleBinding and a Job that patches `consoles.operator.openshift.io/cluster`), plus `helm` 3 and `oc`.
+- **For users of the plugin**: permissions to read Subscription, CSV, InstallPlan, CatalogSource, PackageManifest and OperatorPolicy, and to use the proxy APIs toward managed clusters. See the table in [Kubernetes APIs and MCE proxy](#kubernetes-apis-and-mce-proxy).
 
 ## Troubleshooting
 
@@ -160,51 +162,60 @@ yarn install --immutable
   yarn test-cypress-headless
   ```
 
-## Container image, push, and Helm install
+## Install
 
-The `Dockerfile` runs `yarn install` and `yarn build` in a Node stage and copies `dist/` into an **nginx** image (static files on port 9443 with TLS via the chart). You do not need to run `yarn build` on the host first unless you want to check `dist/` locally.
+The chart is `charts/openshift-console-plugin/`. There are two ways to get the image: let **OpenShift build it** from this repository (no external registry needed), or **build and push it yourself**.
 
-### 1. Build and push the image
+### Option A — build on the cluster (BuildConfig)
 
-Use **`linux/amd64`** when building on Apple Silicon so the image runs on typical OpenShift nodes. Replace the image name with your registry and tag (example: `quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1`).
+Set `build.enabled=true`. The chart creates an `ImageStream` and a `BuildConfig` (Docker strategy, source: this repository) and the Deployment uses the image built in the cluster's internal registry. `plugin.image` is ignored in this mode.
 
-**Podman:**
+```bash
+git clone https://github.com/albertofilice/managed-operators-plugin.git
+cd managed-operators-plugin
+
+helm upgrade -i managed-operators-plugin charts/openshift-console-plugin \
+  -n managed-operators-plugin --create-namespace \
+  --set build.enabled=true
+```
+
+The first build starts automatically; the pods become ready once it has pushed the image (a few minutes):
+
+```bash
+oc logs -f bc/managed-operators-plugin -n managed-operators-plugin
+```
+
+Useful values (all under `build.`, see `values.yaml`):
+
+| Value | Default | Meaning |
+|---|---|---|
+| `source.uri` | this repository | Git URL to build from (point it at your fork if you need to) |
+| `source.ref` | `main` | Branch, tag or commit to build |
+| `source.secretName` | `""` | Secret for a private repository |
+| `outputTag` | `latest` | ImageStream tag the image is pushed to |
+| `resources` | 100m CPU / 1Gi request, 4Gi memory limit | Build pod resources (raise the request on larger clusters, the `yarn build` step needs memory) |
+
+Rebuild after a change (or after changing `source.ref`): `oc start-build managed-operators-plugin -n managed-operators-plugin`. The Deployment has an image trigger, so pods roll when a new image lands in the tag. Notes: the build needs to reach the Git host and `registry.access.redhat.com` (and the npm registry for `yarn install`); the Dockerfile builds `linux/amd64`.
+
+### Option B — build and push the image yourself
+
+The `Dockerfile` runs `yarn install` and `yarn build` in a Node stage and copies `dist/` into an **nginx** image (static files on port 9443 with TLS via the chart). Use **`linux/amd64`** when building on Apple Silicon so the image runs on typical OpenShift nodes. Replace the image name with your registry and tag (example: `quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1`).
 
 ```bash
 export IMAGE=quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1
 podman build --platform linux/amd64 -t "$IMAGE" .
-podman push "$IMAGE"
+podman push "$IMAGE"   # podman login <registry> first; docker works the same way
 ```
 
-One-liner equivalent:
-
-```bash
-podman build --platform linux/amd64 -t quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1 . \
-  && podman push quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1
-```
-
-**Docker** (same idea):
-
-```bash
-docker build --platform linux/amd64 -t "$IMAGE" .
-docker push "$IMAGE"
-```
-
-Log in to your registry (`podman login quay.io`, etc.) before pushing.
-
-### 2. Install or upgrade with Helm
-
-The chart is `charts/openshift-console-plugin/`. Set **`plugin.image`** to the same tag you pushed. Defaults for plugin name, TLS, `plugin.readOnly` and the console patch job are in `charts/openshift-console-plugin/values.yaml`.
-
-**Using `--set`:**
+Install or upgrade with `--set`:
 
 ```bash
 helm upgrade -i managed-operators-plugin charts/openshift-console-plugin \
   -n managed-operators-plugin --create-namespace \
-  --set plugin.image=quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1
+  --set plugin.image="$IMAGE"
 ```
 
-**Using a values file** — copy `helm-values.example.yaml`, set `plugin.image`, then:
+or with a values file — copy `helm-values.example.yaml`, set `plugin.image`, then:
 
 ```bash
 helm upgrade -i managed-operators-plugin charts/openshift-console-plugin \
@@ -212,7 +223,39 @@ helm upgrade -i managed-operators-plugin charts/openshift-console-plugin \
   -f helm-values.example.yaml
 ```
 
-After deploy, ensure the cluster **Console** loads the plugin (the chart can run a post-install Job to add the plugin name to `Console` spec; see chart notes).
+### Optional: read-only install
+
+Add `--set plugin.readOnly=true` to either option (see **Read-only mode** under Features). Pair it with read-only RBAC for real enforcement.
+
+### Verify
+
+```bash
+oc get pods -n managed-operators-plugin                                   # Running 1/1
+oc get consoleplugin managed-operators-plugin                             # exists
+oc get consoles.operator.openshift.io cluster -o jsonpath='{.spec.plugins}'   # contains managed-operators-plugin
+```
+
+The post-install Job adds the plugin to the `Console` spec (disable it with `plugin.jobs.patchConsoles.enabled=false` if you manage the Console with GitOps and add the plugin name yourself). The console then shows a "refresh the web console" message; after a reload the pages are under **Fleet Management → Ecosystem** in the ACM perspective: **Overview**, **Installed Operators**, **Install operators**.
+
+### Uninstall
+
+```bash
+helm uninstall managed-operators-plugin -n managed-operators-plugin
+
+# the chart's Job only adds the plugin to the Console; remove it explicitly
+PLUGINS=$(oc get consoles.operator.openshift.io cluster -o json | jq -c '.spec.plugins - ["managed-operators-plugin"]')
+oc patch consoles.operator.openshift.io cluster --type=merge -p "{\"spec\":{\"plugins\":$PLUGINS}}"
+```
+
+If you used the **auto-approve regex**, the plugin also created resources on each managed cluster that `helm uninstall` does not touch. Remove them there (or through the proxy):
+
+```bash
+oc delete namespace managed-operators-auto-approve
+oc delete clusterrole managed-operators-auto-approve
+oc delete clusterrolebinding managed-operators-auto-approve
+```
+
+OperatorPolicies created from the plugin are not removed either; delete them if you no longer want them enforced.
 
 ## Roadmap / next features
 
@@ -221,6 +264,11 @@ Planned and under consideration. Contributions and design discussion are welcome
 ### Other ideas
 
 - **Stronger testing and docs** — Expand **Cypress** coverage for Overview and policy flows; document **RBAC** matrices and proxy requirements for managed clusters.
+- **Adopt `@stolostron/multicluster-sdk`** — The SDK uses the same MCE `managedclusterproxy` path, so it does not fix proxy stalls by itself. Planned in steps:
+  1. Prototype `useFleetSearch` (SDK 0.x, RHACM >= 2.15) for the **Overview** counts: one RHACM Search query instead of per-cluster list calls. First check that Search indexes Subscription, InstallPlan, ClusterServiceVersion and OperatorPolicy.
+  2. Use `useFleetAccessReview` to hide actions based on real RBAC, complementing `plugin.readOnly`.
+  3. Replace `clusterApiPath()` + `consoleFetchJSON` with `fleetK8s*` (cleanup, standard API). Needs the 0.x line while we target ACM 2.x / OCP 4.21; the 1.x line requires RHACM >= 5.0, OCP >= 4.22, dynamic-plugin-sdk >= 4.22 and react-router 7.
+  Cost to weigh: heavier bundle (`@apollo/client`, `graphql`, `zustand`) and tighter coupling to RHACM versions.
 - **More locales** — Additional language packs beyond `en` once strings stabilize.
 
 ## Repository layout (summary)
