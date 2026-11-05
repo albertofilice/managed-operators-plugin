@@ -199,10 +199,10 @@ Rebuild after a change (or after changing `source.ref`): `oc start-build managed
 
 ### Option B — build and push the image yourself
 
-The `Dockerfile` runs `yarn install` and `yarn build` in a Node stage and copies `dist/` into an **nginx** image (static files on port 9443 with TLS via the chart). Use **`linux/amd64`** when building on Apple Silicon so the image runs on typical OpenShift nodes. Replace the image name with your registry and tag (example: `quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1`).
+The `Dockerfile` runs `yarn install` and `yarn build` in a Node stage and copies `dist/` into an **nginx** image (static files on port 9443 with TLS via the chart). Use **`linux/amd64`** when building on Apple Silicon so the image runs on typical OpenShift nodes. Replace the image name with your registry and tag (example: `quay.io/YOUR_ORG/managed-operators-plugin:v1.0.0`).
 
 ```bash
-export IMAGE=quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1
+export IMAGE=quay.io/YOUR_ORG/managed-operators-plugin:v1.0.0
 podman build --platform linux/amd64 -t "$IMAGE" .
 podman push "$IMAGE"   # podman login <registry> first; docker works the same way
 ```

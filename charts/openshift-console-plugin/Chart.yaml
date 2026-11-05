@@ -4,8 +4,8 @@ description: >-
   OpenShift console dynamic plugin for RHACM/MCE: serves static assets (nginx + TLS),
   registers a ConsolePlugin, and optionally patches the cluster Console to load the plugin.
 type: application
-version: 0.1.0
-appVersion: "0.0.1"
+version: 1.0.0
+appVersion: "1.0.0"
 keywords:
   - openshift
   - console

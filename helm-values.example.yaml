@@ -4,7 +4,7 @@
 plugin:
   name: managed-operators-plugin
   # Required: image you built and pushed (linux/amd64 for typical OpenShift nodes).
-  image: quay.io/YOUR_ORG/managed-operators-plugin:v0.0.1
+  image: quay.io/YOUR_ORG/managed-operators-plugin:v1.0.0
   imagePullPolicy: IfNotPresent
   replicas: 2
   # Private registry pull secret(s):
