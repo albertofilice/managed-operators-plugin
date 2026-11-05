@@ -249,5 +249,15 @@
   "policy_modal_link_regex_help": "Regular expression cheat sheet",
   "policy_modal_helper_auto_approve_unavailable": "Available only with upgrade approval Automatic and a non-empty allowed versions list. Automatic without versions already approves every upgrade; None needs the manual Approve InstallPlan button on Installed Operators.",
   "readonly_banner_installed": "Read-only mode: you can inspect every installed operator, but changes (approve, edit, uninstall, migrate) are disabled.",
-  "readonly_banner_install": "Read-only mode: nothing is applied from this page. Use Generate YAML to get a ready-to-commit OperatorPolicy manifest."
+  "readonly_banner_install": "Read-only mode: nothing is applied from this page. Use Generate YAML to get a ready-to-commit OperatorPolicy manifest.",
+  "overview_alignment_title": "Version alignment across clusters",
+  "overview_alignment_summary": "Aligned: {{aligned}} · Not aligned: {{misaligned}} · On one cluster only: {{single}}",
+  "overview_alignment_show_aligned": "Show aligned operators",
+  "overview_alignment_none": "No operator is installed on two or more clusters yet.",
+  "overview_alignment_all_aligned": "All operators installed on several clusters run the same version.",
+  "overview_alignment_table_aria": "Operator versions per cluster",
+  "overview_alignment_col_operator": "Operator",
+  "overview_alignment_col_versions": "Installed versions (clusters)",
+  "overview_alignment_status_aligned": "Aligned",
+  "overview_alignment_status_misaligned": "Not aligned"
 }

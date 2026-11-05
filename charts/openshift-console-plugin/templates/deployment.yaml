@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "openshift-console-plugin.labels" . | nindent 4 }}
     app.openshift.io/runtime-namespace: {{ .Release.Namespace }}
-  {{- if .Values.build.enabled }}
+  {{- if (.Values.build).enabled }}
   annotations:
     # Roll the pods when a new build is pushed to the ImageStream tag.
     image.openshift.io/triggers: {{ list (dict "from" (dict "kind" "ImageStreamTag" "name" (printf "%s:%s" (include "openshift-console-plugin.name" .) .Values.build.outputTag)) "fieldPath" (printf "spec.template.spec.containers[?(@.name==\"%s\")].image" (include "openshift-console-plugin.name" .))) | toJson | quote }}
@@ -31,7 +31,7 @@ spec:
       {{- end }}
       containers:
         - name: {{ template "openshift-console-plugin.name" . }}
-          {{- if .Values.build.enabled }}
+          {{- if (.Values.build).enabled }}
           image: {{ printf "image-registry.openshift-image-registry.svc:5000/%s/%s:%s" .Release.Namespace (include "openshift-console-plugin.name" .) .Values.build.outputTag }}
           {{- else }}
           image: {{ required "Plugin image must be specified (set plugin.image or build.enabled=true)!" .Values.plugin.image }}

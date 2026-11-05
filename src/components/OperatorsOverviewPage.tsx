@@ -10,12 +10,15 @@ import {
   Card,
   CardBody,
   CardTitle,
+  Checkbox,
   Grid,
   GridItem,
+  Label,
   Spinner,
   Title,
 } from '@patternfly/react-core';
 import { ChartDonut, ChartThemeColor } from '@patternfly/react-charts';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
 import {
   useManagedClusterSubscriptions,
@@ -23,6 +26,7 @@ import {
 } from '../hooks/useManagedClusterSubscriptions';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
 import { installedOperatorsHref, type OverviewFilter } from '../utils/overviewFilters';
+import { computeVersionAlignment } from '../utils/versionAlignment';
 
 type ManagedClusterKind = K8sResourceCommon & {
   apiVersion: 'cluster.open-cluster-management.io/v1';
@@ -186,6 +190,12 @@ export function OperatorsOverviewPage(): React.ReactElement {
     };
   }, [rows, canEditPlugin, isExternalGovernancePolicy]);
 
+  const alignment = React.useMemo(() => computeVersionAlignment(rows), [rows]);
+  const [showAligned, setShowAligned] = React.useState(false);
+  const alignmentRows = showAligned
+    ? alignment.comparable
+    : alignment.comparable.filter((o) => !o.aligned);
+
   const byCluster = React.useMemo(() => groupRowsByCluster(rows), [rows]);
   const clusterKeys = React.useMemo(() => [...byCluster.keys()].sort(), [byCluster]);
 
@@ -308,6 +318,70 @@ export function OperatorsOverviewPage(): React.ReactElement {
                 />
               </GridItem>
             </Grid>
+
+            <Card className="managed-operators-plugin__overview-card pf-v6-u-mb-lg" isCompact>
+              <CardTitle>{t('overview_alignment_title')}</CardTitle>
+              <CardBody>
+                <div className="pf-v6-u-display-flex pf-v6-u-justify-content-space-between pf-v6-u-align-items-center pf-v6-u-flex-wrap">
+                  <span data-test="alignment-summary">
+                    {t('overview_alignment_summary', {
+                      aligned: alignment.aligned,
+                      misaligned: alignment.misaligned,
+                      single: alignment.singleCluster,
+                    })}
+                  </span>
+                  <Checkbox
+                    id="alignment-show-aligned"
+                    label={t('overview_alignment_show_aligned')}
+                    isChecked={showAligned}
+                    onChange={(_e, checked) => setShowAligned(checked)}
+                  />
+                </div>
+              </CardBody>
+              <CardBody>
+                {alignment.comparable.length === 0 ? (
+                  <span className="pf-v6-u-text-color-subtle">{t('overview_alignment_none')}</span>
+                ) : alignmentRows.length === 0 ? (
+                  <span className="pf-v6-u-text-color-subtle">
+                    {t('overview_alignment_all_aligned')}
+                  </span>
+                ) : (
+                  <Table
+                    aria-label={t('overview_alignment_table_aria')}
+                    variant="compact"
+                    data-test="alignment-table"
+                  >
+                    <Thead>
+                      <Tr>
+                        <Th>{t('overview_alignment_col_operator')}</Th>
+                        <Th>{t('overview_alignment_col_versions')}</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {alignmentRows.map((o) => (
+                        <Tr key={o.operator}>
+                          <Td dataLabel={t('overview_alignment_col_operator')}>
+                            {o.operator}{' '}
+                            <Label color={o.aligned ? 'green' : 'orange'} isCompact>
+                              {o.aligned
+                                ? t('overview_alignment_status_aligned')
+                                : t('overview_alignment_status_misaligned')}
+                            </Label>
+                          </Td>
+                          <Td dataLabel={t('overview_alignment_col_versions')}>
+                            {o.versions.map((v) => (
+                              <div key={v.version}>
+                                <strong>{v.version}</strong> ({v.clusters.join(', ')})
+                              </div>
+                            ))}
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                )}
+              </CardBody>
+            </Card>
 
             <Grid hasGutter>
               <GridItem md={12} lg={6}>
