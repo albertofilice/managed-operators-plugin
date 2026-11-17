@@ -39,7 +39,8 @@ test('sends the resource attributes and caches the answer', async () => {
   const a = access.deleteSubscription('openshift-operators');
   assert.equal(await checkClusterAccess('c', a, f), false);
   assert.equal(await checkClusterAccess('c', a, f), false);
-  assert.equal(calls, 1);
+  // one cluster-wide review (denied) plus the namespace one; the second call is cached
+  assert.equal(calls, 2);
   assert.deepEqual(sent?.spec.resourceAttributes, {
     group: 'operators.coreos.com',
     resource: 'subscriptions',
@@ -68,12 +69,54 @@ test('a failing review allows the action (the server still enforces) ', async ()
 });
 
 test('cluster, namespace and verb all take part in the cache key', async () => {
-  await checkClusterAccess('c1', access.approveInstallPlan('a'), reply(true));
-  assert.equal(peekAccess('c1', access.approveInstallPlan('a')), true);
+  await checkClusterAccess('c1', access.approveInstallPlan('a'), reply(false));
+  assert.equal(peekAccess('c1', access.approveInstallPlan('a')), false);
   assert.equal(peekAccess('c2', access.approveInstallPlan('a')), undefined);
   assert.equal(peekAccess('c1', access.approveInstallPlan('b')), undefined);
   assert.notEqual(
     accessKey('c', access.patchSubscription('n')),
     accessKey('c', access.deleteSubscription('n')),
   );
+});
+
+test('an expired answer is refetched, but stays readable as stale meanwhile', async () => {
+  const a = access.approveInstallPlan('ns');
+  await checkClusterAccess('c', a, reply(false));
+  const realNow = Date.now;
+  try {
+    Date.now = () => realNow() + 60 * 60_000;
+    assert.equal(peekAccess('c', a), undefined);
+    assert.equal(peekAccess('c', a, true), false);
+    assert.equal(await checkClusterAccess('c', a, reply(true)), true);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('a cluster-wide grant answers for every namespace with a single review', async () => {
+  let calls = 0;
+  const f = async () => {
+    calls += 1;
+    return { status: { allowed: true } };
+  };
+  const results = await Promise.all(
+    ['a', 'b', 'c', 'd'].map((ns) => checkClusterAccess('c', access.deleteSubscription(ns), f)),
+  );
+  assert.deepEqual(results, [true, true, true, true]);
+  assert.equal(calls, 1);
+  assert.equal(peekAccess('c', access.deleteSubscription('zzz')), true);
+});
+
+test('when the cluster-wide review is denied each namespace is reviewed on its own', async () => {
+  const seen: string[] = [];
+  const f = async (_u: string, body: unknown) => {
+    const attrs = (body as { spec: { resourceAttributes: { namespace?: string } } }).spec
+      .resourceAttributes;
+    seen.push(attrs.namespace ?? '*');
+    return { status: { allowed: attrs.namespace === 'mine' } };
+  };
+  assert.equal(await checkClusterAccess('c', access.deleteSubscription('mine'), f), true);
+  assert.equal(await checkClusterAccess('c', access.deleteSubscription('other'), f), false);
+  assert.deepEqual(seen, ['*', 'mine', 'other']);
+  assert.equal(peekAccess('c', access.deleteSubscription('other')), false);
 });

@@ -492,7 +492,7 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
   };
 
   const { can: canAccess, loading: accessLoading } = useClusterAccess(
-    clusterName && !generateOnly
+    isOpen && clusterName && !generateOnly
       ? [{ cluster: clusterName, attrs: access.createClusterRole() }]
       : [],
   );

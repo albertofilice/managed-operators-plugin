@@ -66,10 +66,28 @@ type Entry = { allowed: boolean; expires: number };
 const resolved = new Map<string, Entry>();
 const inflight = new Map<string, Promise<boolean>>();
 
-/** Cached answer, or `undefined` when it is unknown or expired. */
-export function peekAccess(cluster: string, attrs: AccessAttrs): boolean | undefined {
+function clusterWide(attrs: AccessAttrs): AccessAttrs {
+  return { ...attrs, namespace: undefined };
+}
+
+function peekExact(cluster: string, attrs: AccessAttrs, allowStale: boolean): boolean | undefined {
   const e = resolved.get(accessKey(cluster, attrs));
-  return e && e.expires > Date.now() ? e.allowed : undefined;
+  if (!e) return undefined;
+  return allowStale || e.expires > Date.now() ? e.allowed : undefined;
+}
+
+/**
+ * Cached answer, or `undefined` when unknown. A cluster-wide "allowed" covers every namespace.
+ * Expired answers count as unknown unless `allowStale`, which lets a mounted page keep its last
+ * known answer instead of disabling every action.
+ */
+export function peekAccess(
+  cluster: string,
+  attrs: AccessAttrs,
+  allowStale = false,
+): boolean | undefined {
+  if (attrs.namespace && peekExact(cluster, clusterWide(attrs), allowStale) === true) return true;
+  return peekExact(cluster, attrs, allowStale);
 }
 
 export function resetAccessCache(): void {
@@ -90,6 +108,21 @@ export function checkClusterAccess(
   const key = accessKey(cluster, attrs);
   const known = peekAccess(cluster, attrs);
   if (known !== undefined) return Promise.resolve(known);
+  const pending = inflight.get(key);
+  if (pending) return pending;
+
+  // One cluster-wide review answers for every namespace (the usual admin case); only when it is
+  // denied do we ask namespace by namespace. This keeps the request count per cluster small.
+  if (attrs.namespace) {
+    return checkClusterAccess(cluster, clusterWide(attrs), fetcher).then((wide) =>
+      wide ? true : review(cluster, attrs, fetcher),
+    );
+  }
+  return review(cluster, attrs, fetcher);
+}
+
+function review(cluster: string, attrs: AccessAttrs, fetcher: AccessFetcher): Promise<boolean> {
+  const key = accessKey(cluster, attrs);
   const pending = inflight.get(key);
   if (pending) return pending;
 
@@ -170,7 +203,7 @@ export function useClusterAccess(requests: AccessRequest[]): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
-  const can = (cluster: string, attrs: AccessAttrs) => peekAccess(cluster, attrs) === true;
-  const loading = requests.some((r) => peekAccess(r.cluster, r.attrs) === undefined);
+  const can = (cluster: string, attrs: AccessAttrs) => peekAccess(cluster, attrs, true) === true;
+  const loading = requests.some((r) => peekAccess(r.cluster, r.attrs, true) === undefined);
   return { can, loading };
 }
