@@ -388,6 +388,44 @@ function displayClusterName(requested: string): string {
   return requested;
 }
 
+const CLUSTER_CONCURRENCY = 6;
+
+/**
+ * Lists the Subscriptions of one cluster with their CSV, InstallPlan and policy details.
+ * `onPage` receives each page of rows as soon as it is ready.
+ */
+export async function loadClusterRows(
+  clusterKey: string,
+  epoch: number,
+  // eslint-disable-next-line no-unused-vars
+  onPage?: (_rows: OperatorRow[]) => void,
+): Promise<OperatorRow[]> {
+  const displayName = displayClusterName(clusterKey);
+  const installPlans = await fetchInstallPlansForCluster(clusterKey, epoch);
+  const baseUrl =
+    clusterKey === '__hub_direct__'
+      ? HUB_SUBSCRIPTIONS_PATH
+      : clusterApiPath(clusterKey, '/apis/operators.coreos.com/v1alpha1/subscriptions');
+
+  const all: OperatorRow[] = [];
+  for await (const subsPage of listPagedItems<SubscriptionKind>({
+    refreshEpoch: epoch,
+    baseUrl,
+    limit: 250,
+  })) {
+    const pageRows = await enrichSubscriptionsWithInstallPlans({
+      clusterKey,
+      displayName,
+      subs: subsPage,
+      installPlans,
+      refreshEpoch: epoch,
+    });
+    all.push(...pageRows);
+    onPage?.(pageRows);
+  }
+  return all;
+}
+
 export function useManagedClusterSubscriptions(
   clusterNames: string[],
   refreshEpoch = 0,
@@ -429,48 +467,25 @@ export function useManagedClusterSubscriptions(
         );
       };
 
-      const work = namesSorted.map(async (clusterKey) => {
-        const displayName = displayClusterName(clusterKey);
-
-        const installPlans = await fetchInstallPlansForCluster(clusterKey, epoch);
-
-        const baseUrl =
-          clusterKey === '__hub_direct__'
-            ? HUB_SUBSCRIPTIONS_PATH
-            : clusterApiPath(clusterKey, '/apis/operators.coreos.com/v1alpha1/subscriptions');
-
-        const limit = 250;
-        for await (const subsPage of listPagedItems<SubscriptionKind>({
-          refreshEpoch: epoch,
-          baseUrl,
-          limit,
-        })) {
-          const pageRows = await enrichSubscriptionsWithInstallPlans({
-            clusterKey,
-            displayName,
-            subs: subsPage,
-            installPlans,
-            refreshEpoch: epoch,
-          });
-
+      const work = namesSorted.map((clusterKey) => async () => {
+        await loadClusterRows(clusterKey, epoch, (pageRows) => {
           if (cancelled) return;
           next.push(...pageRows);
           sortRows(next);
           setRows([...next]);
-        }
+        });
       });
 
-      await Promise.all(
-        work.map((p) =>
-          p
-            .then(() => undefined)
-            .catch((e) => {
-              if (cancelled) return;
-              errors.push(e);
-              if (errors.length === 1) setError(e);
-            }),
-        ),
-      );
+      // A few clusters at a time: with a large fleet starting every cluster at once floods the proxy.
+      await mapWithConcurrency(work, CLUSTER_CONCURRENCY, async (run) => {
+        try {
+          await run();
+        } catch (e) {
+          if (cancelled) return;
+          errors.push(e);
+          if (errors.length === 1) setError(e);
+        }
+      });
 
       if (cancelled) return;
       setLoaded(true);

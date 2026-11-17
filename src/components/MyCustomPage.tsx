@@ -35,6 +35,9 @@ import {
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import { usePluginConfig } from '../utils/pluginConfig';
 import { access, useClusterAccess, type AccessRequest } from '../utils/clusterAccess';
+import { useSearchOperatorRows } from '../hooks/useSearchOperatorRows';
+import { useClusterDetail } from '../hooks/useClusterDetail';
+import { LAZY_CLUSTER_THRESHOLD, mergeClusterRows } from '../utils/searchRows';
 import { GuardedButton } from './GuardedButton';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
@@ -138,23 +141,50 @@ const MyCustomPage: React.FC = () => {
   }, [clusters]);
 
   const [subscriptionListEpoch, setSubscriptionListEpoch] = React.useState(0);
-  const {
-    rows,
-    loaded: subsLoaded,
-    error: subsError,
-  } = useManagedClusterSubscriptions(clusterNames, subscriptionListEpoch);
+
+  const activeFilter = React.useMemo(() => parseOverviewFilter(location.search), [location.search]);
+
+  // Large fleets: list from RHACM Search and load each cluster's details only when it is expanded.
+  // `?lazy=1` / `?lazy=0` forces it. The plugin / external split needs policy annotations Search
+  // does not index, so those two filters use the full load.
+  const lazyParam = new URLSearchParams(location.search).get('lazy');
+  const searchWanted =
+    clustersLoaded &&
+    clusterNames.length > 0 &&
+    (lazyParam === '1' || (lazyParam !== '0' && clusterNames.length > LAZY_CLUSTER_THRESHOLD)) &&
+    activeFilter !== 'external' &&
+    activeFilter !== 'plugin';
+  const searchState = useSearchOperatorRows(clusterNames, searchWanted, subscriptionListEpoch);
+  const lazy = searchWanted && searchState.loaded && !searchState.unavailable;
+  const fullLoadEnabled =
+    clustersLoaded && (!searchWanted || (searchState.loaded && searchState.unavailable));
+  const full = useManagedClusterSubscriptions(clusterNames, subscriptionListEpoch, fullLoadEnabled);
+  const clusterDetail = useClusterDetail(lazy, subscriptionListEpoch);
+
+  const rows = React.useMemo(
+    () => (lazy ? mergeClusterRows(searchState.rows, clusterDetail.detail) : full.rows),
+    [lazy, searchState.rows, clusterDetail.detail, full.rows],
+  );
+  const subsLoaded = searchWanted ? searchState.loaded && (lazy || full.loaded) : full.loaded;
+  const subsError = lazy ? undefined : full.error;
+  /** Rows that carry InstallPlan / policy details (all of them unless we are in Search mode). */
+  const detailRows = React.useMemo(
+    () => (lazy ? Object.values(clusterDetail.detail).flat() : rows),
+    [lazy, clusterDetail.detail, rows],
+  );
+  const detailLoaded = (r: OperatorRow) => !lazy || Boolean(clusterDetail.detail[r.clusterKey]);
 
   const {
     loading: pluginMetaLoading,
     canEditPlugin,
     isExternalGovernancePolicy,
     isInformRemediation,
-  } = usePluginPolicyEditableMap(rows, subscriptionListEpoch);
+  } = usePluginPolicyEditableMap(detailRows, subscriptionListEpoch);
 
   const accessRequests = React.useMemo<AccessRequest[]>(() => {
     if (readOnly) return [];
     const reqs: AccessRequest[] = [];
-    for (const r of rows) {
+    for (const r of detailRows) {
       if (r.installPlanApprovalRequired && r.installPlanRef) {
         reqs.push({
           cluster: r.clusterKey,
@@ -175,13 +205,12 @@ const MyCustomPage: React.FC = () => {
       });
     }
     return reqs;
-  }, [rows, readOnly]);
+  }, [detailRows, readOnly]);
   const { can } = useClusterAccess(accessRequests);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
 
-  const activeFilter = React.useMemo(() => parseOverviewFilter(location.search), [location.search]);
   const visibleRows = React.useMemo(
     () =>
       activeFilter
@@ -248,16 +277,26 @@ const MyCustomPage: React.FC = () => {
       const next = { ...prev };
       for (const c of clusterKeys) {
         if (next[c] === undefined) {
-          next[c] = drillClusterKey ? c === drillClusterKey : true;
+          next[c] = drillClusterKey ? c === drillClusterKey : !lazy;
         }
       }
       return next;
     });
-  }, [clusterKeys, drillClusterKey]);
+  }, [clusterKeys, drillClusterKey, lazy]);
 
   const toggleCluster = (name: string) => {
-    setExpanded((e) => ({ ...e, [name]: !(e[name] ?? true) }));
+    setExpanded((e) => ({ ...e, [name]: !(e[name] ?? !lazy) }));
   };
+
+  // In Search mode, load a cluster's details as soon as it is expanded.
+  React.useEffect(() => {
+    if (!lazy) return;
+    for (const [display, list] of byCluster) {
+      if (expanded[display] && list[0]) clusterDetail.load(list[0].clusterKey);
+    }
+    // `clusterDetail.load` changes with the epoch, which is what we want to re-run on
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lazy, expanded, byCluster, clusterDetail.load]);
 
   const safeToggleId = (name: string) =>
     `managed-op-cluster-${name.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
@@ -513,6 +552,37 @@ const MyCustomPage: React.FC = () => {
               />
             )}
 
+            {searchWanted && searchState.loaded && searchState.unavailable && (
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="info"
+                isInline
+                title={t('overview_search_fallback_title')}
+              >
+                {t('overview_search_fallback_body')}
+              </Alert>
+            )}
+
+            {lazy && (
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="info"
+                isInline
+                title={t('installed_lazy_banner')}
+              />
+            )}
+
+            {lazy &&
+              Object.entries(clusterDetail.errors).map(([cluster, err]) => (
+                <Alert
+                  key={cluster}
+                  className="pf-v6-u-mb-md"
+                  variant="warning"
+                  isInline
+                  title={t('installed_lazy_detail_error', { cluster, error: String(err) })}
+                />
+              ))}
+
             {loaded && activeFilter && (
               <Alert
                 className="pf-v6-u-mb-md"
@@ -539,7 +609,7 @@ const MyCustomPage: React.FC = () => {
                 {clusterKeysToShow.map((clusterDisplayName) => {
                   const clusterRows = byCluster.get(clusterDisplayName) ?? [];
                   const tid = safeToggleId(clusterDisplayName);
-                  const isExpanded = expanded[clusterDisplayName] ?? true;
+                  const isExpanded = expanded[clusterDisplayName] ?? !lazy;
                   return (
                     <AccordionItem key={clusterDisplayName} isExpanded={isExpanded}>
                       <AccordionToggle id={tid} onClick={() => toggleCluster(clusterDisplayName)}>
@@ -666,7 +736,8 @@ const MyCustomPage: React.FC = () => {
                                           className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
                                           style={{ gap: 'var(--pf-t--global--spacer--md)' }}
                                         >
-                                          {pluginMetaLoading && r.operatorPolicyRef ? (
+                                          {(pluginMetaLoading && r.operatorPolicyRef) ||
+                                          !detailLoaded(r) ? (
                                             <Spinner
                                               size="sm"
                                               aria-label={t('installed_spinner_policy_aria')}

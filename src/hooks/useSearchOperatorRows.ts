@@ -15,7 +15,12 @@ export type SearchRowsState = {
  * Loads every Subscription and its installed CSV for the given clusters with two Search queries,
  * instead of listing each cluster through the MCE proxy.
  */
-export function useSearchOperatorRows(clusterNames: string[], enabled: boolean): SearchRowsState {
+export function useSearchOperatorRows(
+  clusterNames: string[],
+  enabled: boolean,
+  /** Bump to reload. */
+  refreshEpoch = 0,
+): SearchRowsState {
   const [state, setState] = React.useState<SearchRowsState>({
     rows: [],
     loaded: false,
@@ -62,7 +67,7 @@ export function useSearchOperatorRows(clusterNames: string[], enabled: boolean):
     };
     // `clusterNames` is represented by `key`
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
+  }, [key, enabled, refreshEpoch]);
 
   return state;
 }

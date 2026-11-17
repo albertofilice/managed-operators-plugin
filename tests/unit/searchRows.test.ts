@@ -1,7 +1,7 @@
 import './sdkStub';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { installedCsvNames, rowsFromSearch } from '../../src/utils/searchRows';
+import { installedCsvNames, mergeClusterRows, rowsFromSearch } from '../../src/utils/searchRows';
 import { searchItems, SEARCH_PATH } from '../../src/utils/searchApi';
 import { computeVersionAlignment } from '../../src/utils/versionAlignment';
 
@@ -119,4 +119,17 @@ test('GraphQL errors and malformed answers reject so the caller can fall back', 
     }),
     /404/,
   );
+});
+
+test('mergeClusterRows swaps in the detailed rows only for the clusters that were loaded', () => {
+  const base = rowsFromSearch(
+    [sub({ cluster: 'a' }), sub({ cluster: 'b' })],
+    [csv({ cluster: 'a' }), csv({ cluster: 'b' })],
+    ['a', 'b'],
+  );
+  const detailed = { ...base[0], installPlanApproval: 'Manual' as const };
+  const merged = mergeClusterRows(base, { a: [detailed] });
+  assert.equal(merged.length, 2);
+  assert.equal(merged.find((r) => r.clusterKey === 'a')?.installPlanApproval, 'Manual');
+  assert.equal(merged.find((r) => r.clusterKey === 'b')?.installPlanApproval, '—');
 });

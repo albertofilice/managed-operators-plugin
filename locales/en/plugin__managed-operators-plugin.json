@@ -265,5 +265,7 @@
   "policy_modal_helper_auto_approve_no_rbac": "Auto-approve needs permission to create a ClusterRole on this cluster, which you do not have.",
   "overview_search_fallback_title": "Loading directly from each cluster",
   "overview_search_fallback_body": "RHACM Search is not available or has no data yet, so this page queries every cluster through the MCE proxy, which is slower with many clusters. Enable the search component of the MultiClusterHub (spec.overrides.components, name: search) for faster loading.",
-  "overview_view_details": "View"
+  "overview_view_details": "View",
+  "installed_lazy_banner": "Large fleet: this list comes from RHACM Search. Expand a cluster to load its actions and policy details.",
+  "installed_lazy_detail_error": "Could not load the details of {{cluster}}: {{error}}"
 }

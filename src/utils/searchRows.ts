@@ -87,3 +87,22 @@ export function rowsFromSearch(
 }
 
 export const SEARCH_OLM_FILTERS = [{ property: 'apigroup', values: [OLM_GROUP] }];
+
+/** Above this many Ready clusters, Installed Operators lists from Search and loads details per cluster. */
+export const LAZY_CLUSTER_THRESHOLD = 10;
+
+/** Replaces the Search rows of every cluster whose details are loaded with the detailed rows. */
+export function mergeClusterRows(
+  base: OperatorRow[],
+  detail: Record<string, OperatorRow[]>,
+): OperatorRow[] {
+  const merged = base.filter((r) => !detail[r.clusterKey]);
+  for (const rows of Object.values(detail)) merged.push(...rows);
+  merged.sort(
+    (a, b) =>
+      a.clusterDisplayName.localeCompare(b.clusterDisplayName) ||
+      a.namespace.localeCompare(b.namespace) ||
+      a.name.localeCompare(b.name),
+  );
+  return merged;
+}
