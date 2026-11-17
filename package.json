@@ -97,6 +97,8 @@
   "packageManager": "yarn@4.13.0",
   "dependencies": {
     "@patternfly/react-charts": "^6.2.2",
+    "@stolostron/multicluster-sdk": "0.10.5",
+    "classnames": "^2.5.1",
     "yaml": "2"
   }
 }

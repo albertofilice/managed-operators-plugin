@@ -13,19 +13,15 @@ beforeEach(resetAccessCache);
 
 const reply = (allowed: boolean) => async () => ({ status: { allowed } });
 
-test('reviews go through the MCE proxy for managed clusters and to the hub directly otherwise', async () => {
-  const urls: string[] = [];
-  const f = async (url: string) => {
-    urls.push(url);
+test('reviews name the managed cluster, and the hub key is passed through', async () => {
+  const seen: string[] = [];
+  const f = async (cluster: string) => {
+    seen.push(cluster);
     return { status: { allowed: true } };
   };
   await checkClusterAccess('prod-1', access.approveInstallPlan('ns'), f);
   await checkClusterAccess('__hub_direct__', access.approveInstallPlan('ns'), f);
-  assert.equal(
-    urls[0],
-    '/api/proxy/plugin/mce/console/multicloud/managedclusterproxy/prod-1/apis/authorization.k8s.io/v1/selfsubjectaccessreviews',
-  );
-  assert.equal(urls[1], '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews');
+  assert.deepEqual(seen, ['prod-1', '__hub_direct__']);
 });
 
 test('sends the resource attributes and caches the answer', async () => {

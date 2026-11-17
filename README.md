@@ -55,7 +55,7 @@ Modal to name the policy, namespaces, channel, and related OLM fields before cre
 
 ## Kubernetes APIs and MCE proxy
 
-Calls use `consoleFetchJSON` from the dynamic plugin SDK. Cluster API paths are built with `clusterApiPath()` in `src/utils/clusterApi.ts`:
+Calls use `consoleFetchJSON` from the dynamic plugin SDK (and `fleetK8sCreate` from `@stolostron/multicluster-sdk` for access reviews). Cluster API paths are built with `clusterApiPath()` in `src/utils/clusterApi.ts`:
 
 - **Hub (current session)** — special key `__hub_direct__`: the API path is used as-is (e.g. `/apis/...` against the console session you are logged into).
 - **Managed cluster** — same Kubernetes API path, prefixed with the **MCE console proxy** to the spoke:
@@ -267,7 +267,7 @@ Planned and under consideration. Contributions and design discussion are welcome
 ### Other ideas
 
 - **Stronger testing and docs** — Expand **Cypress** coverage for Overview and policy flows; document **RBAC** matrices and proxy requirements for managed clusters.
-- **`@stolostron/multicluster-sdk`** — Evaluated and not used. It reaches managed clusters through the same MCE `managedclusterproxy`; we built a spike that sends the access reviews through `fleetK8sCreate` (works on console 4.22 / RHACM 2.17), but the SDK is shipped as non-tree-shakeable CommonJS plus ~35 dependencies (Apollo, GraphQL, zustand), growing the plugin bundle from ~1.1 MB to ~6 MB, and it needs `classnames` added by hand. Search and access reviews are implemented directly against the same endpoints (`src/utils/searchApi.ts`, `src/utils/clusterAccess.ts`). Revisit when moving to RHACM 5 / OCP 4.22+ (SDK 1.x needs RHACM >= 5.0, dynamic-plugin-sdk >= 4.22, react-router 7).
+- **`@stolostron/multicluster-sdk`** — Adopted (0.10.5, works with ACM >= 2.15 / OCP >= 4.19). Access reviews (`SelfSubjectAccessReview`) are sent with `fleetK8sCreate`, which uses the same MCE `managedclusterproxy` as the rest of the plugin. Trade-off: the SDK is non-tree-shakeable CommonJS and grows the plugin bundle from ~1.1 MB to ~6 MB, and it needs `classnames` declared by hand. Other calls still use `consoleFetchJSON` and the Search endpoint directly; they can move to the SDK gradually. SDK 1.x needs RHACM >= 5.0, dynamic-plugin-sdk >= 4.22 and react-router 7.
 - **More locales** — Additional language packs beyond `en` once strings stabilize.
 
 ## Repository layout (summary)

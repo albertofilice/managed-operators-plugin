@@ -1,13 +1,11 @@
 import * as React from 'react';
-import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
-import { clusterApiPath } from './clusterApi';
+import { fleetK8sCreate } from '@stolostron/multicluster-sdk';
 
 export type AccessAttrs = { group: string; resource: string; verb: string; namespace?: string };
 export type AccessRequest = { cluster: string; attrs: AccessAttrs };
 
 const OLM = 'operators.coreos.com';
 const POLICY = 'policy.open-cluster-management.io';
-const SSAR_PATH = '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews';
 
 /** The write actions the UI offers, as the Kubernetes permission each one needs. */
 export const access = {
@@ -55,9 +53,27 @@ export function accessKey(cluster: string, a: AccessAttrs): string {
 
 type Review = { status?: { allowed?: boolean } };
 // eslint-disable-next-line no-unused-vars
-export type AccessFetcher = (_url: string, _body: unknown) => Promise<Review>;
+export type AccessFetcher = (_cluster: string, _body: unknown) => Promise<Review>;
 
-const defaultFetcher: AccessFetcher = (url, body) => consoleFetchJSON.post(url, body);
+const HUB_KEY = '__hub_direct__';
+const SSAR_MODEL = {
+  apiGroup: 'authorization.k8s.io',
+  apiVersion: 'v1',
+  kind: 'SelfSubjectAccessReview',
+  plural: 'selfsubjectaccessreviews',
+  abbr: 'SSAR',
+  label: 'SelfSubjectAccessReview',
+  labelPlural: 'SelfSubjectAccessReviews',
+  namespaced: false,
+};
+
+/** Sends the review through the MCE managedclusterproxy (hub: directly) using the stolostron SDK. */
+const defaultFetcher: AccessFetcher = (cluster, body) =>
+  fleetK8sCreate({
+    model: SSAR_MODEL,
+    cluster: cluster === HUB_KEY ? undefined : cluster,
+    data: body,
+  } as never) as Promise<Review>;
 
 const GRANTED_TTL_MS = 5 * 60_000;
 const FAILED_TTL_MS = 30_000;
@@ -138,7 +154,7 @@ function review(cluster: string, attrs: AccessAttrs, fetcher: AccessFetcher): Pr
       },
     },
   };
-  const p = fetcher(clusterApiPath(cluster, SSAR_PATH), body)
+  const p = fetcher(cluster, body)
     .then((res) => {
       const allowed = res?.status?.allowed === true;
       resolved.set(key, { allowed, expires: Date.now() + GRANTED_TTL_MS });
