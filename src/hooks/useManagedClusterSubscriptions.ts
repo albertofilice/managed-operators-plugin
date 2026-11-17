@@ -388,7 +388,12 @@ function displayClusterName(requested: string): string {
   return requested;
 }
 
-export function useManagedClusterSubscriptions(clusterNames: string[], refreshEpoch = 0) {
+export function useManagedClusterSubscriptions(
+  clusterNames: string[],
+  refreshEpoch = 0,
+  /** When false nothing is fetched (e.g. rows come from ACM Search instead). */
+  enabled = true,
+) {
   const [rows, setRows] = React.useState<OperatorRow[]>([]);
   const [loaded, setLoaded] = React.useState(false);
   const [error, setError] = React.useState<unknown>();
@@ -401,9 +406,13 @@ export function useManagedClusterSubscriptions(clusterNames: string[], refreshEp
   React.useEffect(() => {
     let cancelled = false;
 
-    setLoaded(false);
     setError(undefined);
     setRows([]);
+    if (!enabled) {
+      setLoaded(true);
+      return undefined;
+    }
+    setLoaded(false);
 
     const epoch = refreshEpoch;
 
@@ -470,7 +479,7 @@ export function useManagedClusterSubscriptions(clusterNames: string[], refreshEp
     return () => {
       cancelled = true;
     };
-  }, [namesSorted, refreshEpoch]);
+  }, [namesSorted, refreshEpoch, enabled]);
 
   return { rows, loaded, error };
 }

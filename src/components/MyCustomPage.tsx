@@ -34,6 +34,8 @@ import {
 } from '../hooks/useManagedClusterSubscriptions';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import { usePluginConfig } from '../utils/pluginConfig';
+import { access, useClusterAccess, type AccessRequest } from '../utils/clusterAccess';
+import { GuardedButton } from './GuardedButton';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
 import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
@@ -148,6 +150,33 @@ const MyCustomPage: React.FC = () => {
     isExternalGovernancePolicy,
     isInformRemediation,
   } = usePluginPolicyEditableMap(rows, subscriptionListEpoch);
+
+  const accessRequests = React.useMemo<AccessRequest[]>(() => {
+    if (readOnly) return [];
+    const reqs: AccessRequest[] = [];
+    for (const r of rows) {
+      if (r.installPlanApprovalRequired && r.installPlanRef) {
+        reqs.push({
+          cluster: r.clusterKey,
+          attrs: access.approveInstallPlan(r.installPlanRef.namespace),
+        });
+      }
+      if (r.operatorPolicyRef) {
+        reqs.push({
+          cluster: r.clusterKey,
+          attrs: access.updateOperatorPolicy(r.operatorPolicyRef.namespace),
+        });
+      }
+      reqs.push({
+        cluster: r.clusterKey,
+        attrs: r.policyGovernanceManaged
+          ? access.deleteSubscription(r.namespace)
+          : access.patchSubscription(r.namespace),
+      });
+    }
+    return reqs;
+  }, [rows, readOnly]);
+  const { can } = useClusterAccess(accessRequests);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
@@ -646,40 +675,63 @@ const MyCustomPage: React.FC = () => {
                                             <>
                                               {r.installPlanApprovalRequired &&
                                                 r.installPlanRef && (
-                                                  <Button
+                                                  <GuardedButton
                                                     variant="primary"
                                                     size="sm"
+                                                    allowed={can(
+                                                      r.clusterKey,
+                                                      access.approveInstallPlan(
+                                                        r.installPlanRef.namespace,
+                                                      ),
+                                                    )}
                                                     onClick={() => openApprove(r)}
                                                   >
                                                     {t('installed_btn_approve_installplan')}
-                                                  </Button>
+                                                  </GuardedButton>
                                                 )}
                                               {showEdit && (
-                                                <Button
+                                                <GuardedButton
                                                   variant="secondary"
                                                   size="sm"
+                                                  allowed={
+                                                    !r.operatorPolicyRef ||
+                                                    can(
+                                                      r.clusterKey,
+                                                      access.updateOperatorPolicy(
+                                                        r.operatorPolicyRef.namespace,
+                                                      ),
+                                                    )
+                                                  }
                                                   onClick={() => openEditPolicy(r)}
                                                 >
                                                   {t('installed_btn_edit_policy')}
-                                                </Button>
+                                                </GuardedButton>
                                               )}
                                               {showUninstall && (
-                                                <Button
+                                                <GuardedButton
                                                   variant="danger"
                                                   size="sm"
+                                                  allowed={can(
+                                                    r.clusterKey,
+                                                    access.deleteSubscription(r.namespace),
+                                                  )}
                                                   onClick={() => openUninstall(r)}
                                                 >
                                                   {t('installed_btn_uninstall')}
-                                                </Button>
+                                                </GuardedButton>
                                               )}
                                               {showMigrate && (
-                                                <Button
+                                                <GuardedButton
                                                   variant="secondary"
                                                   size="sm"
+                                                  allowed={can(
+                                                    r.clusterKey,
+                                                    access.patchSubscription(r.namespace),
+                                                  )}
                                                   onClick={() => openMigrate(r)}
                                                 >
                                                   {t('installed_btn_migrate')}
-                                                </Button>
+                                                </GuardedButton>
                                               )}
                                               {showMigrationPending && (
                                                 <span className="pf-v6-u-font-size-sm pf-v6-u-text-color-subtle">

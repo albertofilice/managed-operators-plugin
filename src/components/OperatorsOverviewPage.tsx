@@ -6,6 +6,7 @@ import {
   K8sResourceCommon,
 } from '@openshift-console/dynamic-plugin-sdk';
 import {
+  Alert,
   Button,
   Card,
   CardBody,
@@ -25,6 +26,7 @@ import {
   type OperatorRow,
 } from '../hooks/useManagedClusterSubscriptions';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
+import { useSearchOperatorRows } from '../hooks/useSearchOperatorRows';
 import { installedOperatorsHref, type OverviewFilter } from '../utils/overviewFilters';
 import { computeVersionAlignment } from '../utils/versionAlignment';
 
@@ -147,16 +149,21 @@ export function OperatorsOverviewPage(): React.ReactElement {
       .filter(Boolean) as string[];
   }, [clusters]);
 
-  const {
-    rows,
-    loaded: subsLoaded,
-    error: subsError,
-  } = useManagedClusterSubscriptions(clusterNames);
+  // ACM Search answers for all clusters at once. Without it (component disabled, unreachable, or
+  // still empty) we fall back to listing each cluster through the MCE proxy.
+  const searchEnabled = clustersLoaded && clusterNames.length > 0;
+  const searchState = useSearchOperatorRows(clusterNames, searchEnabled);
+  const viaProxy = clustersLoaded && (!searchEnabled || searchState.unavailable);
+  const proxyState = useManagedClusterSubscriptions(clusterNames, 0, viaProxy);
+  const rows = viaProxy ? proxyState.rows : searchState.rows;
+  const subsLoaded = viaProxy ? proxyState.loaded : searchState.loaded;
+  const subsError = viaProxy ? proxyState.error : undefined;
+  const viaSearch = searchEnabled && !viaProxy;
   const {
     loading: pluginMetaLoading,
     canEditPlugin,
     isExternalGovernancePolicy,
-  } = usePluginPolicyEditableMap(rows);
+  } = usePluginPolicyEditableMap(viaSearch ? [] : rows);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
@@ -234,6 +241,17 @@ export function OperatorsOverviewPage(): React.ReactElement {
           <div className="pf-v6-u-text-align-center pf-v6-u-p-xl">
             <Spinner aria-label={t('overview_spinner_aria')} />
           </div>
+        )}
+
+        {loaded && searchState.unavailable && (
+          <Alert
+            className="pf-v6-u-mb-md"
+            variant="info"
+            isInline
+            title={t('overview_search_fallback_title')}
+          >
+            {t('overview_search_fallback_body')}
+          </Alert>
         )}
 
         {loadError && (
@@ -426,7 +444,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                           href={installedOperatorsHref('external')}
                           className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
                         >
-                          {stats.external}
+                          {viaSearch ? t('overview_view_details') : stats.external}
                         </Button>
                       )}
                     </div>
@@ -444,7 +462,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                           href={installedOperatorsHref('plugin')}
                           className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
                         >
-                          {stats.pluginManaged}
+                          {viaSearch ? t('overview_view_details') : stats.pluginManaged}
                         </Button>
                       )}
                     </div>

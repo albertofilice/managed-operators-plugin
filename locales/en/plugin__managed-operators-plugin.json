@@ -259,5 +259,11 @@
   "overview_alignment_col_operator": "Operator",
   "overview_alignment_col_versions": "Installed versions (clusters)",
   "overview_alignment_status_aligned": "Aligned",
-  "overview_alignment_status_misaligned": "Not aligned"
+  "overview_alignment_status_misaligned": "Not aligned",
+  "access_denied_tooltip": "You do not have permission to do this on this cluster.",
+  "install_banner_no_create": "You cannot create OperatorPolicies on {{cluster}}. You can still use Generate YAML.",
+  "policy_modal_helper_auto_approve_no_rbac": "Auto-approve needs permission to create a ClusterRole on this cluster, which you do not have.",
+  "overview_search_fallback_title": "Loading directly from each cluster",
+  "overview_search_fallback_body": "RHACM Search is not available or has no data yet, so this page queries every cluster through the MCE proxy, which is slower with many clusters. Enable the search component of the MultiClusterHub (spec.overrides.components, name: search) for faster loading.",
+  "overview_view_details": "View"
 }
