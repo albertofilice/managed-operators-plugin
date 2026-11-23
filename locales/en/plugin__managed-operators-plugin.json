@@ -272,5 +272,7 @@
   "installed_search_aria": "Search installed operators",
   "installed_search_empty": "No operators match your search",
   "installed_search_clear": "Clear search",
-  "export_csv": "Export CSV"
+  "export_csv": "Export CSV",
+  "installed_policy_missing_label": "Policy not found",
+  "installed_policy_missing_title": "This subscription still names an OperatorPolicy that does not exist on the cluster (deleted, or its removal behaviour kept the subscription). Nothing governs it any more."
 }

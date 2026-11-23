@@ -200,6 +200,7 @@ const MyCustomPage: React.FC = () => {
     loading: pluginMetaLoading,
     canEditPlugin,
     isExternalGovernancePolicy,
+    isMissingPolicy,
     isInformRemediation,
   } = usePluginPolicyEditableMap(detailRows, subscriptionListEpoch);
 
@@ -761,6 +762,17 @@ const MyCustomPage: React.FC = () => {
                                                 title={t('installed_inform_title')}
                                               >
                                                 {t('installed_inform_label')}
+                                              </Label>
+                                            )}
+                                          {!pluginMetaLoading &&
+                                            r.operatorPolicyRef &&
+                                            isMissingPolicy(r) && (
+                                              <Label
+                                                color="orange"
+                                                isCompact
+                                                title={t('installed_policy_missing_title')}
+                                              >
+                                                {t('installed_policy_missing_label')}
                                               </Label>
                                             )}
                                           {!pluginMetaLoading &&

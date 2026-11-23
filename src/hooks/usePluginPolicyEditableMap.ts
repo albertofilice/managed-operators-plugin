@@ -8,12 +8,15 @@ import {
   MANAGED_OPERATORS_GET_CACHE_TTL_MS,
   operatorPolicyGetCacheKey,
 } from '../utils/managedOperatorsGetCache';
-import { listOperatorPoliciesForCluster } from '../utils/listOperatorPolicies';
+import { listOperatorPolicyListing } from '../utils/listOperatorPolicies';
+import { isNotFoundError } from '../utils/policyLookup';
 import type { OperatorRow } from './useManagedClusterSubscriptions';
 
 /** Resolved metadata for one subscription↔policy ref (same fetch as plugin-created check). */
 export type PolicyLineMeta = {
   pluginCreated: boolean;
+  /** The subscription names an OperatorPolicy that does not exist on the cluster (deleted, never created). */
+  missing?: boolean;
   remediation?: 'inform' | 'enforce';
 };
 
@@ -50,6 +53,9 @@ export function usePluginPolicyEditableMap(
   /** OperatorPolicy exists on cluster but was not created from this plugin (e.g. hub `Policy` → reconciled OperatorPolicy). */
   // eslint-disable-next-line no-unused-vars
   isExternalGovernancePolicy: (_: OperatorRow) => boolean;
+  /** The subscription points at an OperatorPolicy that no longer exists on the cluster. */
+  // eslint-disable-next-line no-unused-vars
+  isMissingPolicy: (_: OperatorRow) => boolean;
   /** Policy spec uses remediation inform (observe-only until enforced elsewhere). */
   // eslint-disable-next-line no-unused-vars
   isInformRemediation: (_: OperatorRow) => boolean;
@@ -90,7 +96,7 @@ export function usePluginPolicyEditableMap(
 
       await Promise.all(
         [...clusterKeys].map(async (clusterKey) => {
-          const policies = await listOperatorPoliciesForCluster(clusterKey, {
+          const { items: policies, complete } = await listOperatorPolicyListing(clusterKey, {
             listScope: policyListCacheScope,
           });
           const byNsName = new Map<string, OperatorPolicyKind>();
@@ -115,6 +121,12 @@ export function usePluginPolicyEditableMap(
                 return;
               }
 
+              // The cluster-wide list answered and does not have it: it is not there, no need to ask.
+              if (complete) {
+                next[line] = { pluginCreated: false, missing: true };
+                return;
+              }
+
               try {
                 const url = clusterApiPath(clusterKey, policyPath(namespace, name));
                 const policy = await cachedConsoleFetchJson(
@@ -123,8 +135,10 @@ export function usePluginPolicyEditableMap(
                   () => consoleFetchJSON(url, 'GET') as Promise<OperatorPolicyKind>,
                 );
                 next[line] = metaFromPolicy(policy);
-              } catch {
-                next[line] = { pluginCreated: false };
+              } catch (e) {
+                next[line] = isNotFoundError(e)
+                  ? { pluginCreated: false, missing: true }
+                  : { pluginCreated: false };
               }
             }),
           );
@@ -155,7 +169,16 @@ export function usePluginPolicyEditableMap(
     (r: OperatorRow) => {
       const k = refKey(r);
       if (!k || loading) return false;
-      return map[k]?.pluginCreated === false;
+      return map[k]?.pluginCreated === false && !map[k]?.missing;
+    },
+    [loading, map],
+  );
+
+  const isMissingPolicy = React.useCallback(
+    (r: OperatorRow) => {
+      const k = refKey(r);
+      if (!k || loading) return false;
+      return map[k]?.missing === true;
     },
     [loading, map],
   );
@@ -169,5 +192,11 @@ export function usePluginPolicyEditableMap(
     [loading, map],
   );
 
-  return { loading, canEditPlugin, isExternalGovernancePolicy, isInformRemediation };
+  return {
+    loading,
+    canEditPlugin,
+    isExternalGovernancePolicy,
+    isMissingPolicy,
+    isInformRemediation,
+  };
 }
