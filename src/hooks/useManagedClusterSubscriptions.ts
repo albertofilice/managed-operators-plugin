@@ -52,6 +52,7 @@ export type OperatorRow = {
     source: string;
     sourceNamespace: string;
     installPlanApproval: 'Automatic' | 'Manual';
+    /** `spec.startingCSV` of the Subscription (empty when it has none). */
     startingCSV: string;
   } | null;
 };
@@ -356,7 +357,8 @@ async function enrichSubscriptionsWithInstallPlans(options: {
             source: subSource,
             sourceNamespace: subSourceNs,
             installPlanApproval: prefillApproval,
-            startingCSV: csvName,
+            // The Subscription's own spec, so a policy built from it matches it (not the installed CSV).
+            startingCSV: (sub.spec?.startingCSV ?? '').trim(),
           }
         : null;
 
