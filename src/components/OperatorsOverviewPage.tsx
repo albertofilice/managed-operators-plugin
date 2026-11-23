@@ -29,6 +29,8 @@ import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap'
 import { useSearchOperatorRows } from '../hooks/useSearchOperatorRows';
 import { installedOperatorsHref, type OverviewFilter } from '../utils/overviewFilters';
 import { computeVersionAlignment } from '../utils/versionAlignment';
+import { csvFilename, downloadCsv } from '../utils/csv';
+import { alignmentCsv } from '../utils/exportCsv';
 
 type ManagedClusterKind = K8sResourceCommon & {
   apiVersion: 'cluster.open-cluster-management.io/v1';
@@ -348,12 +350,25 @@ export function OperatorsOverviewPage(): React.ReactElement {
                       single: alignment.singleCluster,
                     })}
                   </span>
-                  <Checkbox
-                    id="alignment-show-aligned"
-                    label={t('overview_alignment_show_aligned')}
-                    isChecked={showAligned}
-                    onChange={(_e, checked) => setShowAligned(checked)}
-                  />
+                  <span className="pf-v6-u-display-flex pf-v6-u-align-items-center pf-v6-u-column-gap-md">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      data-test="alignment-export-csv"
+                      isDisabled={alignment.comparable.length + alignment.singleCluster === 0}
+                      onClick={() =>
+                        downloadCsv(csvFilename('operator-alignment'), alignmentCsv(alignment))
+                      }
+                    >
+                      {t('export_csv')}
+                    </Button>
+                    <Checkbox
+                      id="alignment-show-aligned"
+                      label={t('overview_alignment_show_aligned')}
+                      isChecked={showAligned}
+                      onChange={(_e, checked) => setShowAligned(checked)}
+                    />
+                  </span>
                 </div>
               </CardBody>
               <CardBody>

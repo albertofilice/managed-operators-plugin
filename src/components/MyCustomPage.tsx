@@ -39,6 +39,8 @@ import { access, useClusterAccess, type AccessRequest } from '../utils/clusterAc
 import { useSearchOperatorRows } from '../hooks/useSearchOperatorRows';
 import { useClusterDetail } from '../hooks/useClusterDetail';
 import { SEARCH_TEXT_PARAM, rowMatchesText } from '../utils/operatorSearch';
+import { csvFilename, downloadCsv } from '../utils/csv';
+import { operatorsCsv } from '../utils/exportCsv';
 import { LAZY_CLUSTER_THRESHOLD, mergeClusterRows } from '../utils/searchRows';
 import { GuardedButton } from './GuardedButton';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
@@ -613,15 +615,26 @@ const MyCustomPage: React.FC = () => {
               ))}
 
             {loaded && rows.length > 0 && (
-              <SearchInput
-                className="pf-v6-u-mb-md"
-                placeholder={t('installed_search_placeholder')}
-                aria-label={t('installed_search_aria')}
-                value={searchDraft}
-                onChange={(_e, v) => applySearch(v)}
-                onClear={() => applySearch('')}
-                resultsCount={searchText.trim() ? visibleRows.length : undefined}
-              />
+              <div className="pf-v6-u-display-flex pf-v6-u-align-items-center pf-v6-u-column-gap-md pf-v6-u-mb-md">
+                <SearchInput
+                  placeholder={t('installed_search_placeholder')}
+                  aria-label={t('installed_search_aria')}
+                  value={searchDraft}
+                  onChange={(_e, v) => applySearch(v)}
+                  onClear={() => applySearch('')}
+                  resultsCount={searchText.trim() ? visibleRows.length : undefined}
+                />
+                <Button
+                  variant="secondary"
+                  data-test="installed-export-csv"
+                  isDisabled={visibleRows.length === 0}
+                  onClick={() =>
+                    downloadCsv(csvFilename('installed-operators'), operatorsCsv(visibleRows))
+                  }
+                >
+                  {t('export_csv')}
+                </Button>
+              </div>
             )}
 
             {loaded && activeFilter && (

@@ -19,6 +19,8 @@ export type AlignmentSummary = {
   misaligned: number;
   /** Operators found on one cluster only (nothing to compare against). */
   singleCluster: number;
+  /** The single-cluster operators themselves (for exports). */
+  singleClusterOperators: OperatorAlignment[];
 };
 
 const UNKNOWN_VERSION = '—';
@@ -41,25 +43,30 @@ export function computeVersionAlignment(rows: OperatorRow[]): AlignmentSummary {
   }
 
   const comparable: OperatorAlignment[] = [];
-  let singleCluster = 0;
+  const singleClusterOperators: OperatorAlignment[] = [];
   for (const [operator, versions] of byOperator) {
     const clusterCount = new Set([...versions.values()].flatMap((c) => [...c])).size;
-    if (clusterCount < 2) {
-      singleCluster += 1;
-      continue;
-    }
-    comparable.push({
+    const entry: OperatorAlignment = {
       operator,
       aligned: versions.size === 1,
       clusterCount,
       versions: [...versions.entries()]
         .sort(([a], [b]) => compareVersions(a, b))
         .map(([version, clusters]) => ({ version, clusters: [...clusters].sort() })),
-    });
+    };
+    if (clusterCount < 2) singleClusterOperators.push(entry);
+    else comparable.push(entry);
   }
   comparable.sort(
     (a, b) => Number(a.aligned) - Number(b.aligned) || a.operator.localeCompare(b.operator),
   );
   const aligned = comparable.filter((o) => o.aligned).length;
-  return { comparable, aligned, misaligned: comparable.length - aligned, singleCluster };
+  singleClusterOperators.sort((a, b) => a.operator.localeCompare(b.operator));
+  return {
+    comparable,
+    aligned,
+    misaligned: comparable.length - aligned,
+    singleCluster: singleClusterOperators.length,
+    singleClusterOperators,
+  };
 }
