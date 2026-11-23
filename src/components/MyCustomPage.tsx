@@ -23,6 +23,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalVariant,
+  SearchInput,
   Spinner,
   Title,
 } from '@patternfly/react-core';
@@ -37,6 +38,7 @@ import { usePluginConfig } from '../utils/pluginConfig';
 import { access, useClusterAccess, type AccessRequest } from '../utils/clusterAccess';
 import { useSearchOperatorRows } from '../hooks/useSearchOperatorRows';
 import { useClusterDetail } from '../hooks/useClusterDetail';
+import { SEARCH_TEXT_PARAM, rowMatchesText } from '../utils/operatorSearch';
 import { LAZY_CLUSTER_THRESHOLD, mergeClusterRows } from '../utils/searchRows';
 import { GuardedButton } from './GuardedButton';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
@@ -143,6 +145,24 @@ const MyCustomPage: React.FC = () => {
   const [subscriptionListEpoch, setSubscriptionListEpoch] = React.useState(0);
 
   const activeFilter = React.useMemo(() => parseOverviewFilter(location.search), [location.search]);
+  // Free-text search; kept in the URL (?q=) so a link or reload keeps it.
+  const searchText = React.useMemo(
+    () => new URLSearchParams(location.search).get(SEARCH_TEXT_PARAM) ?? '',
+    [location.search],
+  );
+  const [searchDraft, setSearchDraft] = React.useState(searchText);
+  React.useEffect(() => setSearchDraft(searchText), [searchText]);
+  const applySearch = React.useCallback(
+    (value: string) => {
+      setSearchDraft(value);
+      const q = new URLSearchParams(location.search);
+      if (value.trim()) q.set(SEARCH_TEXT_PARAM, value);
+      else q.delete(SEARCH_TEXT_PARAM);
+      const str = q.toString();
+      navigate(`${location.pathname}${str ? `?${str}` : ''}`, { replace: true });
+    },
+    [navigate, location.pathname, location.search],
+  );
 
   // Large fleets: list from RHACM Search and load each cluster's details only when it is expanded.
   // `?lazy=1` / `?lazy=0` forces it. The plugin / external split needs policy annotations Search
@@ -211,18 +231,17 @@ const MyCustomPage: React.FC = () => {
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
 
-  const visibleRows = React.useMemo(
-    () =>
-      activeFilter
-        ? rows.filter((r) =>
-            rowMatchesOverviewFilter(r, activeFilter, {
-              canEditPlugin,
-              isExternalGovernancePolicy,
-            }),
-          )
-        : rows,
-    [rows, activeFilter, canEditPlugin, isExternalGovernancePolicy],
-  );
+  const visibleRows = React.useMemo(() => {
+    const byFilter = activeFilter
+      ? rows.filter((r) =>
+          rowMatchesOverviewFilter(r, activeFilter, {
+            canEditPlugin,
+            isExternalGovernancePolicy,
+          }),
+        )
+      : rows;
+    return searchText.trim() ? byFilter.filter((r) => rowMatchesText(r, searchText)) : byFilter;
+  }, [rows, activeFilter, searchText, canEditPlugin, isExternalGovernancePolicy]);
   const clearFilter = React.useCallback(() => {
     const q = new URLSearchParams(location.search);
     q.delete(OVERVIEW_FILTER_PARAM);
@@ -287,6 +306,16 @@ const MyCustomPage: React.FC = () => {
   const toggleCluster = (name: string) => {
     setExpanded((e) => ({ ...e, [name]: !(e[name] ?? !lazy) }));
   };
+
+  // Searching in Search mode: when only a few clusters match, open them so the hits are visible.
+  React.useEffect(() => {
+    if (!lazy || !searchText.trim() || clusterKeys.length === 0 || clusterKeys.length > 3) return;
+    setExpanded((prev) => {
+      const next = { ...prev };
+      for (const c of clusterKeys) next[c] = true;
+      return next;
+    });
+  }, [lazy, searchText, clusterKeys]);
 
   // In Search mode, load a cluster's details as soon as it is expanded.
   React.useEffect(() => {
@@ -583,6 +612,18 @@ const MyCustomPage: React.FC = () => {
                 />
               ))}
 
+            {loaded && rows.length > 0 && (
+              <SearchInput
+                className="pf-v6-u-mb-md"
+                placeholder={t('installed_search_placeholder')}
+                aria-label={t('installed_search_aria')}
+                value={searchDraft}
+                onChange={(_e, v) => applySearch(v)}
+                onClear={() => applySearch('')}
+                resultsCount={searchText.trim() ? visibleRows.length : undefined}
+              />
+            )}
+
             {loaded && activeFilter && (
               <Alert
                 className="pf-v6-u-mb-md"
@@ -600,9 +641,25 @@ const MyCustomPage: React.FC = () => {
               />
             )}
 
-            {loaded && rows.length > 0 && visibleRows.length === 0 && activeFilter && (
-              <EmptyState icon={CubesIcon} titleText={t('installed_filter_empty')} />
-            )}
+            {loaded &&
+              rows.length > 0 &&
+              visibleRows.length === 0 &&
+              (activeFilter || searchText.trim()) && (
+                <EmptyState
+                  icon={CubesIcon}
+                  titleText={
+                    searchText.trim() ? t('installed_search_empty') : t('installed_filter_empty')
+                  }
+                >
+                  {searchText.trim() && (
+                    <EmptyStateBody>
+                      <Button variant="link" onClick={() => applySearch('')}>
+                        {t('installed_search_clear')}
+                      </Button>
+                    </EmptyStateBody>
+                  )}
+                </EmptyState>
+              )}
 
             {loaded && rows.length > 0 && (
               <Accordion asDefinitionList={false} aria-label={t('installed_accordion_aria')}>
