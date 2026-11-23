@@ -734,10 +734,15 @@ const MyCustomPage: React.FC = () => {
                                   isExternalGovernancePolicy(r);
                                 const showUninstall =
                                   r.policyGovernanceManaged && !hideUninstallExternalHub;
-                                const showMigrate =
-                                  !r.policyGovernanceManaged && !r.migrationEnrollLabelRequested;
+                                /** The subscription names an OperatorPolicy that is gone: it can be re-created through Migrate. */
+                                const orphanPolicyRef =
+                                  Boolean(r.operatorPolicyRef) &&
+                                  !pluginMetaLoading &&
+                                  isMissingPolicy(r);
+                                const needsPolicy = !r.policyGovernanceManaged || orphanPolicyRef;
+                                const showMigrate = needsPolicy && !r.migrationEnrollLabelRequested;
                                 const showMigrationPending =
-                                  !r.policyGovernanceManaged && r.migrationEnrollLabelRequested;
+                                  needsPolicy && r.migrationEnrollLabelRequested;
                                 return (
                                   <Tr key={`${r.clusterKey}/${r.namespace}/${r.name}`}>
                                     <Td dataLabel={t('installed_col_namespace')}>{r.namespace}</Td>
