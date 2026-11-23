@@ -6,23 +6,31 @@ import {
   K8sResourceCommon,
 } from '@openshift-console/dynamic-plugin-sdk';
 import {
+  Alert,
   Button,
   Card,
   CardBody,
   CardTitle,
+  Checkbox,
   Grid,
   GridItem,
+  Label,
   Spinner,
   Title,
 } from '@patternfly/react-core';
 import { ChartDonut, ChartThemeColor } from '@patternfly/react-charts';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
 import {
   useManagedClusterSubscriptions,
   type OperatorRow,
 } from '../hooks/useManagedClusterSubscriptions';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
+import { useSearchOperatorRows } from '../hooks/useSearchOperatorRows';
 import { installedOperatorsHref, type OverviewFilter } from '../utils/overviewFilters';
+import { computeVersionAlignment } from '../utils/versionAlignment';
+import { csvFilename, downloadCsv } from '../utils/csv';
+import { alignmentCsv } from '../utils/exportCsv';
 
 type ManagedClusterKind = K8sResourceCommon & {
   apiVersion: 'cluster.open-cluster-management.io/v1';
@@ -143,16 +151,21 @@ export function OperatorsOverviewPage(): React.ReactElement {
       .filter(Boolean) as string[];
   }, [clusters]);
 
-  const {
-    rows,
-    loaded: subsLoaded,
-    error: subsError,
-  } = useManagedClusterSubscriptions(clusterNames);
+  // ACM Search answers for all clusters at once. Without it (component disabled, unreachable, or
+  // still empty) we fall back to listing each cluster through the MCE proxy.
+  const searchEnabled = clustersLoaded && clusterNames.length > 0;
+  const searchState = useSearchOperatorRows(clusterNames, searchEnabled);
+  const viaProxy = clustersLoaded && (!searchEnabled || searchState.unavailable);
+  const proxyState = useManagedClusterSubscriptions(clusterNames, 0, viaProxy);
+  const rows = viaProxy ? proxyState.rows : searchState.rows;
+  const subsLoaded = viaProxy ? proxyState.loaded : searchState.loaded;
+  const subsError = viaProxy ? proxyState.error : undefined;
+  const viaSearch = searchEnabled && !viaProxy;
   const {
     loading: pluginMetaLoading,
     canEditPlugin,
     isExternalGovernancePolicy,
-  } = usePluginPolicyEditableMap(rows);
+  } = usePluginPolicyEditableMap(viaSearch ? [] : rows);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
@@ -185,6 +198,12 @@ export function OperatorsOverviewPage(): React.ReactElement {
       pluginManaged,
     };
   }, [rows, canEditPlugin, isExternalGovernancePolicy]);
+
+  const alignment = React.useMemo(() => computeVersionAlignment(rows), [rows]);
+  const [showAligned, setShowAligned] = React.useState(false);
+  const alignmentRows = showAligned
+    ? alignment.comparable
+    : alignment.comparable.filter((o) => !o.aligned);
 
   const byCluster = React.useMemo(() => groupRowsByCluster(rows), [rows]);
   const clusterKeys = React.useMemo(() => [...byCluster.keys()].sort(), [byCluster]);
@@ -224,6 +243,17 @@ export function OperatorsOverviewPage(): React.ReactElement {
           <div className="pf-v6-u-text-align-center pf-v6-u-p-xl">
             <Spinner aria-label={t('overview_spinner_aria')} />
           </div>
+        )}
+
+        {loaded && searchState.unavailable && (
+          <Alert
+            className="pf-v6-u-mb-md"
+            variant="info"
+            isInline
+            title={t('overview_search_fallback_title')}
+          >
+            {t('overview_search_fallback_body')}
+          </Alert>
         )}
 
         {loadError && (
@@ -309,6 +339,83 @@ export function OperatorsOverviewPage(): React.ReactElement {
               </GridItem>
             </Grid>
 
+            <Card className="managed-operators-plugin__overview-card pf-v6-u-mb-lg" isCompact>
+              <CardTitle>{t('overview_alignment_title')}</CardTitle>
+              <CardBody>
+                <div className="pf-v6-u-display-flex pf-v6-u-justify-content-space-between pf-v6-u-align-items-center pf-v6-u-flex-wrap">
+                  <span data-test="alignment-summary">
+                    {t('overview_alignment_summary', {
+                      aligned: alignment.aligned,
+                      misaligned: alignment.misaligned,
+                      single: alignment.singleCluster,
+                    })}
+                  </span>
+                  <span className="pf-v6-u-display-flex pf-v6-u-align-items-center pf-v6-u-column-gap-md">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      data-test="alignment-export-csv"
+                      isDisabled={alignment.comparable.length + alignment.singleCluster === 0}
+                      onClick={() =>
+                        downloadCsv(csvFilename('operator-alignment'), alignmentCsv(alignment))
+                      }
+                    >
+                      {t('export_csv')}
+                    </Button>
+                    <Checkbox
+                      id="alignment-show-aligned"
+                      label={t('overview_alignment_show_aligned')}
+                      isChecked={showAligned}
+                      onChange={(_e, checked) => setShowAligned(checked)}
+                    />
+                  </span>
+                </div>
+              </CardBody>
+              <CardBody>
+                {alignment.comparable.length === 0 ? (
+                  <span className="pf-v6-u-text-color-subtle">{t('overview_alignment_none')}</span>
+                ) : alignmentRows.length === 0 ? (
+                  <span className="pf-v6-u-text-color-subtle">
+                    {t('overview_alignment_all_aligned')}
+                  </span>
+                ) : (
+                  <Table
+                    aria-label={t('overview_alignment_table_aria')}
+                    variant="compact"
+                    data-test="alignment-table"
+                  >
+                    <Thead>
+                      <Tr>
+                        <Th>{t('overview_alignment_col_operator')}</Th>
+                        <Th>{t('overview_alignment_col_versions')}</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {alignmentRows.map((o) => (
+                        <Tr key={o.operator}>
+                          <Td dataLabel={t('overview_alignment_col_operator')}>
+                            {o.operator}{' '}
+                            <Label color={o.aligned ? 'green' : 'orange'} isCompact>
+                              {o.aligned
+                                ? t('overview_alignment_status_aligned')
+                                : t('overview_alignment_status_misaligned')}
+                            </Label>
+                          </Td>
+                          <Td dataLabel={t('overview_alignment_col_versions')}>
+                            {o.versions.map((v) => (
+                              <div key={v.version}>
+                                <strong>{v.version}</strong> ({v.clusters.join(', ')})
+                              </div>
+                            ))}
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                )}
+              </CardBody>
+            </Card>
+
             <Grid hasGutter>
               <GridItem md={12} lg={6}>
                 <Card className="managed-operators-plugin__overview-card" isCompact>
@@ -352,7 +459,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                           href={installedOperatorsHref('external')}
                           className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
                         >
-                          {stats.external}
+                          {viaSearch ? t('overview_view_details') : stats.external}
                         </Button>
                       )}
                     </div>
@@ -370,7 +477,7 @@ export function OperatorsOverviewPage(): React.ReactElement {
                           href={installedOperatorsHref('plugin')}
                           className="pf-v6-u-font-size-md pf-v6-u-font-weight-bold"
                         >
-                          {stats.pluginManaged}
+                          {viaSearch ? t('overview_view_details') : stats.pluginManaged}
                         </Button>
                       )}
                     </div>

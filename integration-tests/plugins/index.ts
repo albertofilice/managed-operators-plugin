@@ -21,6 +21,9 @@ const config: Cypress.PluginConfig = (on, config) => {
   // `config` is the resolved Cypress config
   config.baseUrl = `${process.env.BRIDGE_BASE_ADDRESS || 'http://localhost:9000/'}`;
   config.env.BRIDGE_KUBEADMIN_PASSWORD = process.env.BRIDGE_KUBEADMIN_PASSWORD;
+  config.env.BRIDGE_USERNAME = process.env.BRIDGE_USERNAME;
+  config.env.BRIDGE_PASSWORD = process.env.BRIDGE_PASSWORD;
+  config.env.BRIDGE_IDP = process.env.BRIDGE_IDP;
   return config;
 };
 

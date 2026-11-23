@@ -30,11 +30,24 @@ async function fetchPolicyList(
   );
 }
 
+export type OperatorPolicyListing = {
+  items: OperatorPolicyKind[];
+  /** The cluster-wide list answered: a policy missing from `items` does not exist on the cluster. */
+  complete: boolean;
+};
+
 /** List OperatorPolicies on the managed cluster (cluster-wide list first, then known namespaces). */
 export async function listOperatorPoliciesForCluster(
   clusterKey: string,
   options?: ListOperatorPoliciesOptions,
 ): Promise<OperatorPolicyKind[]> {
+  return (await listOperatorPolicyListing(clusterKey, options)).items;
+}
+
+export async function listOperatorPolicyListing(
+  clusterKey: string,
+  options?: ListOperatorPoliciesOptions,
+): Promise<OperatorPolicyListing> {
   const listScope = options?.listScope ?? 0;
   const bypassCache = options?.bypassCache ?? false;
 
@@ -46,7 +59,7 @@ export async function listOperatorPoliciesForCluster(
       bypassCache,
     );
     if (list.items?.length) {
-      return dedupeByUid(list.items);
+      return { items: dedupeByUid(list.items), complete: true };
     }
   } catch {
     /* cluster-wide list not available */
@@ -76,7 +89,7 @@ export async function listOperatorPoliciesForCluster(
       /* missing namespace or RBAC */
     }
   }
-  return dedupeByUid(merged);
+  return { items: dedupeByUid(merged), complete: false };
 }
 
 function dedupeByUid(items: OperatorPolicyKind[]): OperatorPolicyKind[] {

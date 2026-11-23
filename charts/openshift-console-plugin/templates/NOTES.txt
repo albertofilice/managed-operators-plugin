@@ -16,7 +16,7 @@ Verify in the OpenShift console under Administration → Cluster Settings → Co
 
   oc get consoleplugin {{ include "openshift-console-plugin.name" . }} -n {{ .Release.Namespace }}
 
-{{- if .Values.build.enabled }}
+{{- if (.Values.build).enabled }}
 
 The image is built on the cluster from {{ .Values.build.source.uri }} ({{ .Values.build.source.ref }}).
 Follow the build, the pods start once the first build has pushed the image:

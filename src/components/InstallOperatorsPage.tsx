@@ -31,6 +31,8 @@ import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
 import { clusterApiPath } from '../utils/clusterApi';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
 import { usePluginConfig } from '../utils/pluginConfig';
+import { access, useClusterAccess } from '../utils/clusterAccess';
+import { GuardedButton } from './GuardedButton';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import {
   parseInstallOperatorsPrefill,
@@ -107,6 +109,15 @@ const InstallOperatorsPage: React.FC = () => {
 
   const [selectedCluster, setSelectedCluster] = React.useState('');
   const [extraClusters, setExtraClusters] = React.useState<string[]>([]);
+  const accessRequests = React.useMemo(
+    () =>
+      readOnly
+        ? []
+        : clusterNames.map((c) => ({ cluster: c, attrs: access.createOperatorPolicy() })),
+    [clusterNames, readOnly],
+  );
+  const { can, loading: accessLoading } = useClusterAccess(accessRequests);
+  const canCreatePolicy = (cluster: string) => can(cluster, access.createOperatorPolicy());
   const [nameFilter, setNameFilter] = React.useState('');
   const [providerFilter, setProviderFilter] = React.useState('');
   const [catalogFilter, setCatalogFilter] = React.useState('');
@@ -383,6 +394,7 @@ const InstallOperatorsPage: React.FC = () => {
                         id={`extra-cluster-${n}`}
                         label={n}
                         isChecked={extraClusters.includes(n)}
+                        isDisabled={!canCreatePolicy(n)}
                         onChange={(_e, checked) =>
                           setExtraClusters((prev) =>
                             checked ? [...prev, n] : prev.filter((c) => c !== n),
@@ -441,6 +453,17 @@ const InstallOperatorsPage: React.FC = () => {
                 title={t('readonly_banner_install')}
               />
             )}
+            {!readOnly &&
+              selectedCluster &&
+              !accessLoading &&
+              !canCreatePolicy(selectedCluster) && (
+                <Alert
+                  className="pf-v6-u-mb-md"
+                  variant="warning"
+                  isInline
+                  title={t('install_banner_no_create', { cluster: selectedCluster })}
+                />
+              )}
 
             {!selectedCluster && (
               <p className="pf-v6-u-text-color-subtle">{t('install_choose_cluster_hint')}</p>
@@ -522,16 +545,17 @@ const InstallOperatorsPage: React.FC = () => {
                               style={{ columnGap: 'var(--pf-t--global--spacer--md)' }}
                             >
                               {!readOnly && (
-                                <Button
+                                <GuardedButton
                                   variant="secondary"
                                   size="sm"
+                                  allowed={canCreatePolicy(selectedCluster)}
                                   onClick={() => openInstallOrEdit(pm)}
                                   className="pf-v6-u-white-space-nowrap"
                                 >
                                   {hasPlugin
                                     ? t('install_btn_edit_policy')
                                     : t('install_btn_install')}
-                                </Button>
+                                </GuardedButton>
                               )}
                               {(readOnly || !hasPlugin) && (
                                 <Button

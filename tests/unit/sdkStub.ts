@@ -6,5 +6,8 @@ Module._load = function (request: string, ...rest: unknown[]) {
   if (request === '@openshift-console/dynamic-plugin-sdk') {
     return { consoleFetchJSON: {} };
   }
+  if (request === '@stolostron/multicluster-sdk') {
+    return { fleetK8sCreate: async () => ({}) };
+  }
   return original.call(this, request, ...rest);
 };

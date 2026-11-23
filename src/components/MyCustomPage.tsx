@@ -23,6 +23,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalVariant,
+  SearchInput,
   Spinner,
   Title,
 } from '@patternfly/react-core';
@@ -34,6 +35,14 @@ import {
 } from '../hooks/useManagedClusterSubscriptions';
 import { useClusterCatalogSources } from '../hooks/useClusterCatalogSources';
 import { usePluginConfig } from '../utils/pluginConfig';
+import { access, useClusterAccess, type AccessRequest } from '../utils/clusterAccess';
+import { useSearchOperatorRows } from '../hooks/useSearchOperatorRows';
+import { useClusterDetail } from '../hooks/useClusterDetail';
+import { SEARCH_TEXT_PARAM, rowMatchesText } from '../utils/operatorSearch';
+import { csvFilename, downloadCsv } from '../utils/csv';
+import { operatorsCsv } from '../utils/exportCsv';
+import { LAZY_CLUSTER_THRESHOLD, mergeClusterRows } from '../utils/searchRows';
+import { GuardedButton } from './GuardedButton';
 import { usePluginPolicyEditableMap } from '../hooks/usePluginPolicyEditableMap';
 import { clearManagedOperatorsGetCache } from '../utils/managedOperatorsGetCache';
 import { OperatorPolicyFormModal } from './OperatorPolicyFormModal';
@@ -136,35 +145,106 @@ const MyCustomPage: React.FC = () => {
   }, [clusters]);
 
   const [subscriptionListEpoch, setSubscriptionListEpoch] = React.useState(0);
-  const {
-    rows,
-    loaded: subsLoaded,
-    error: subsError,
-  } = useManagedClusterSubscriptions(clusterNames, subscriptionListEpoch);
+
+  const activeFilter = React.useMemo(() => parseOverviewFilter(location.search), [location.search]);
+  // Free-text search; kept in the URL (?q=) so a link or reload keeps it.
+  const searchText = React.useMemo(
+    () => new URLSearchParams(location.search).get(SEARCH_TEXT_PARAM) ?? '',
+    [location.search],
+  );
+  const [searchDraft, setSearchDraft] = React.useState(searchText);
+  React.useEffect(() => setSearchDraft(searchText), [searchText]);
+  const applySearch = React.useCallback(
+    (value: string) => {
+      setSearchDraft(value);
+      const q = new URLSearchParams(location.search);
+      if (value.trim()) q.set(SEARCH_TEXT_PARAM, value);
+      else q.delete(SEARCH_TEXT_PARAM);
+      const str = q.toString();
+      navigate(`${location.pathname}${str ? `?${str}` : ''}`, { replace: true });
+    },
+    [navigate, location.pathname, location.search],
+  );
+
+  // Large fleets: list from RHACM Search and load each cluster's details only when it is expanded.
+  // `?lazy=1` / `?lazy=0` forces it. The plugin / external split needs policy annotations Search
+  // does not index, so those two filters use the full load.
+  const lazyParam = new URLSearchParams(location.search).get('lazy');
+  const searchWanted =
+    clustersLoaded &&
+    clusterNames.length > 0 &&
+    (lazyParam === '1' || (lazyParam !== '0' && clusterNames.length > LAZY_CLUSTER_THRESHOLD)) &&
+    activeFilter !== 'external' &&
+    activeFilter !== 'plugin';
+  const searchState = useSearchOperatorRows(clusterNames, searchWanted, subscriptionListEpoch);
+  const lazy = searchWanted && searchState.loaded && !searchState.unavailable;
+  const fullLoadEnabled =
+    clustersLoaded && (!searchWanted || (searchState.loaded && searchState.unavailable));
+  const full = useManagedClusterSubscriptions(clusterNames, subscriptionListEpoch, fullLoadEnabled);
+  const clusterDetail = useClusterDetail(lazy, subscriptionListEpoch);
+
+  const rows = React.useMemo(
+    () => (lazy ? mergeClusterRows(searchState.rows, clusterDetail.detail) : full.rows),
+    [lazy, searchState.rows, clusterDetail.detail, full.rows],
+  );
+  const subsLoaded = searchWanted ? searchState.loaded && (lazy || full.loaded) : full.loaded;
+  const subsError = lazy ? undefined : full.error;
+  /** Rows that carry InstallPlan / policy details (all of them unless we are in Search mode). */
+  const detailRows = React.useMemo(
+    () => (lazy ? Object.values(clusterDetail.detail).flat() : rows),
+    [lazy, clusterDetail.detail, rows],
+  );
+  const detailLoaded = (r: OperatorRow) => !lazy || Boolean(clusterDetail.detail[r.clusterKey]);
 
   const {
     loading: pluginMetaLoading,
     canEditPlugin,
     isExternalGovernancePolicy,
+    isMissingPolicy,
     isInformRemediation,
-  } = usePluginPolicyEditableMap(rows, subscriptionListEpoch);
+  } = usePluginPolicyEditableMap(detailRows, subscriptionListEpoch);
+
+  const accessRequests = React.useMemo<AccessRequest[]>(() => {
+    if (readOnly) return [];
+    const reqs: AccessRequest[] = [];
+    for (const r of detailRows) {
+      if (r.installPlanApprovalRequired && r.installPlanRef) {
+        reqs.push({
+          cluster: r.clusterKey,
+          attrs: access.approveInstallPlan(r.installPlanRef.namespace),
+        });
+      }
+      if (r.operatorPolicyRef) {
+        reqs.push({
+          cluster: r.clusterKey,
+          attrs: access.updateOperatorPolicy(r.operatorPolicyRef.namespace),
+        });
+      }
+      reqs.push({
+        cluster: r.clusterKey,
+        attrs: r.policyGovernanceManaged
+          ? access.deleteSubscription(r.namespace)
+          : access.patchSubscription(r.namespace),
+      });
+    }
+    return reqs;
+  }, [detailRows, readOnly]);
+  const { can } = useClusterAccess(accessRequests);
 
   const loaded = clustersLoaded && subsLoaded;
   const loadError = clustersError ?? subsError;
 
-  const activeFilter = React.useMemo(() => parseOverviewFilter(location.search), [location.search]);
-  const visibleRows = React.useMemo(
-    () =>
-      activeFilter
-        ? rows.filter((r) =>
-            rowMatchesOverviewFilter(r, activeFilter, {
-              canEditPlugin,
-              isExternalGovernancePolicy,
-            }),
-          )
-        : rows,
-    [rows, activeFilter, canEditPlugin, isExternalGovernancePolicy],
-  );
+  const visibleRows = React.useMemo(() => {
+    const byFilter = activeFilter
+      ? rows.filter((r) =>
+          rowMatchesOverviewFilter(r, activeFilter, {
+            canEditPlugin,
+            isExternalGovernancePolicy,
+          }),
+        )
+      : rows;
+    return searchText.trim() ? byFilter.filter((r) => rowMatchesText(r, searchText)) : byFilter;
+  }, [rows, activeFilter, searchText, canEditPlugin, isExternalGovernancePolicy]);
   const clearFilter = React.useCallback(() => {
     const q = new URLSearchParams(location.search);
     q.delete(OVERVIEW_FILTER_PARAM);
@@ -219,16 +299,36 @@ const MyCustomPage: React.FC = () => {
       const next = { ...prev };
       for (const c of clusterKeys) {
         if (next[c] === undefined) {
-          next[c] = drillClusterKey ? c === drillClusterKey : true;
+          next[c] = drillClusterKey ? c === drillClusterKey : !lazy;
         }
       }
       return next;
     });
-  }, [clusterKeys, drillClusterKey]);
+  }, [clusterKeys, drillClusterKey, lazy]);
 
   const toggleCluster = (name: string) => {
-    setExpanded((e) => ({ ...e, [name]: !(e[name] ?? true) }));
+    setExpanded((e) => ({ ...e, [name]: !(e[name] ?? !lazy) }));
   };
+
+  // Searching in Search mode: when only a few clusters match, open them so the hits are visible.
+  React.useEffect(() => {
+    if (!lazy || !searchText.trim() || clusterKeys.length === 0 || clusterKeys.length > 3) return;
+    setExpanded((prev) => {
+      const next = { ...prev };
+      for (const c of clusterKeys) next[c] = true;
+      return next;
+    });
+  }, [lazy, searchText, clusterKeys]);
+
+  // In Search mode, load a cluster's details as soon as it is expanded.
+  React.useEffect(() => {
+    if (!lazy) return;
+    for (const [display, list] of byCluster) {
+      if (expanded[display] && list[0]) clusterDetail.load(list[0].clusterKey);
+    }
+    // `clusterDetail.load` changes with the epoch, which is what we want to re-run on
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lazy, expanded, byCluster, clusterDetail.load]);
 
   const safeToggleId = (name: string) =>
     `managed-op-cluster-${name.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
@@ -484,6 +584,60 @@ const MyCustomPage: React.FC = () => {
               />
             )}
 
+            {searchWanted && searchState.loaded && searchState.unavailable && (
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="info"
+                isInline
+                title={t('overview_search_fallback_title')}
+              >
+                {t('overview_search_fallback_body')}
+              </Alert>
+            )}
+
+            {lazy && (
+              <Alert
+                className="pf-v6-u-mb-md"
+                variant="info"
+                isInline
+                title={t('installed_lazy_banner')}
+              />
+            )}
+
+            {lazy &&
+              Object.entries(clusterDetail.errors).map(([cluster, err]) => (
+                <Alert
+                  key={cluster}
+                  className="pf-v6-u-mb-md"
+                  variant="warning"
+                  isInline
+                  title={t('installed_lazy_detail_error', { cluster, error: String(err) })}
+                />
+              ))}
+
+            {loaded && rows.length > 0 && (
+              <div className="pf-v6-u-display-flex pf-v6-u-align-items-center pf-v6-u-column-gap-md pf-v6-u-mb-md">
+                <SearchInput
+                  placeholder={t('installed_search_placeholder')}
+                  aria-label={t('installed_search_aria')}
+                  value={searchDraft}
+                  onChange={(_e, v) => applySearch(v)}
+                  onClear={() => applySearch('')}
+                  resultsCount={searchText.trim() ? visibleRows.length : undefined}
+                />
+                <Button
+                  variant="secondary"
+                  data-test="installed-export-csv"
+                  isDisabled={visibleRows.length === 0}
+                  onClick={() =>
+                    downloadCsv(csvFilename('installed-operators'), operatorsCsv(visibleRows))
+                  }
+                >
+                  {t('export_csv')}
+                </Button>
+              </div>
+            )}
+
             {loaded && activeFilter && (
               <Alert
                 className="pf-v6-u-mb-md"
@@ -501,16 +655,32 @@ const MyCustomPage: React.FC = () => {
               />
             )}
 
-            {loaded && rows.length > 0 && visibleRows.length === 0 && activeFilter && (
-              <EmptyState icon={CubesIcon} titleText={t('installed_filter_empty')} />
-            )}
+            {loaded &&
+              rows.length > 0 &&
+              visibleRows.length === 0 &&
+              (activeFilter || searchText.trim()) && (
+                <EmptyState
+                  icon={CubesIcon}
+                  titleText={
+                    searchText.trim() ? t('installed_search_empty') : t('installed_filter_empty')
+                  }
+                >
+                  {searchText.trim() && (
+                    <EmptyStateBody>
+                      <Button variant="link" onClick={() => applySearch('')}>
+                        {t('installed_search_clear')}
+                      </Button>
+                    </EmptyStateBody>
+                  )}
+                </EmptyState>
+              )}
 
             {loaded && rows.length > 0 && (
               <Accordion asDefinitionList={false} aria-label={t('installed_accordion_aria')}>
                 {clusterKeysToShow.map((clusterDisplayName) => {
                   const clusterRows = byCluster.get(clusterDisplayName) ?? [];
                   const tid = safeToggleId(clusterDisplayName);
-                  const isExpanded = expanded[clusterDisplayName] ?? true;
+                  const isExpanded = expanded[clusterDisplayName] ?? !lazy;
                   return (
                     <AccordionItem key={clusterDisplayName} isExpanded={isExpanded}>
                       <AccordionToggle id={tid} onClick={() => toggleCluster(clusterDisplayName)}>
@@ -564,10 +734,15 @@ const MyCustomPage: React.FC = () => {
                                   isExternalGovernancePolicy(r);
                                 const showUninstall =
                                   r.policyGovernanceManaged && !hideUninstallExternalHub;
-                                const showMigrate =
-                                  !r.policyGovernanceManaged && !r.migrationEnrollLabelRequested;
+                                /** The subscription names an OperatorPolicy that is gone: it can be re-created through Migrate. */
+                                const orphanPolicyRef =
+                                  Boolean(r.operatorPolicyRef) &&
+                                  !pluginMetaLoading &&
+                                  isMissingPolicy(r);
+                                const needsPolicy = !r.policyGovernanceManaged || orphanPolicyRef;
+                                const showMigrate = needsPolicy && !r.migrationEnrollLabelRequested;
                                 const showMigrationPending =
-                                  !r.policyGovernanceManaged && r.migrationEnrollLabelRequested;
+                                  needsPolicy && r.migrationEnrollLabelRequested;
                                 return (
                                   <Tr key={`${r.clusterKey}/${r.namespace}/${r.name}`}>
                                     <Td dataLabel={t('installed_col_namespace')}>{r.namespace}</Td>
@@ -592,6 +767,17 @@ const MyCustomPage: React.FC = () => {
                                                 title={t('installed_inform_title')}
                                               >
                                                 {t('installed_inform_label')}
+                                              </Label>
+                                            )}
+                                          {!pluginMetaLoading &&
+                                            r.operatorPolicyRef &&
+                                            isMissingPolicy(r) && (
+                                              <Label
+                                                color="orange"
+                                                isCompact
+                                                title={t('installed_policy_missing_title')}
+                                              >
+                                                {t('installed_policy_missing_label')}
                                               </Label>
                                             )}
                                           {!pluginMetaLoading &&
@@ -637,7 +823,8 @@ const MyCustomPage: React.FC = () => {
                                           className="pf-v6-u-display-inline-flex pf-v6-u-flex-nowrap pf-v6-u-align-items-center"
                                           style={{ gap: 'var(--pf-t--global--spacer--md)' }}
                                         >
-                                          {pluginMetaLoading && r.operatorPolicyRef ? (
+                                          {(pluginMetaLoading && r.operatorPolicyRef) ||
+                                          !detailLoaded(r) ? (
                                             <Spinner
                                               size="sm"
                                               aria-label={t('installed_spinner_policy_aria')}
@@ -646,40 +833,63 @@ const MyCustomPage: React.FC = () => {
                                             <>
                                               {r.installPlanApprovalRequired &&
                                                 r.installPlanRef && (
-                                                  <Button
+                                                  <GuardedButton
                                                     variant="primary"
                                                     size="sm"
+                                                    allowed={can(
+                                                      r.clusterKey,
+                                                      access.approveInstallPlan(
+                                                        r.installPlanRef.namespace,
+                                                      ),
+                                                    )}
                                                     onClick={() => openApprove(r)}
                                                   >
                                                     {t('installed_btn_approve_installplan')}
-                                                  </Button>
+                                                  </GuardedButton>
                                                 )}
                                               {showEdit && (
-                                                <Button
+                                                <GuardedButton
                                                   variant="secondary"
                                                   size="sm"
+                                                  allowed={
+                                                    !r.operatorPolicyRef ||
+                                                    can(
+                                                      r.clusterKey,
+                                                      access.updateOperatorPolicy(
+                                                        r.operatorPolicyRef.namespace,
+                                                      ),
+                                                    )
+                                                  }
                                                   onClick={() => openEditPolicy(r)}
                                                 >
                                                   {t('installed_btn_edit_policy')}
-                                                </Button>
+                                                </GuardedButton>
                                               )}
                                               {showUninstall && (
-                                                <Button
+                                                <GuardedButton
                                                   variant="danger"
                                                   size="sm"
+                                                  allowed={can(
+                                                    r.clusterKey,
+                                                    access.deleteSubscription(r.namespace),
+                                                  )}
                                                   onClick={() => openUninstall(r)}
                                                 >
                                                   {t('installed_btn_uninstall')}
-                                                </Button>
+                                                </GuardedButton>
                                               )}
                                               {showMigrate && (
-                                                <Button
+                                                <GuardedButton
                                                   variant="secondary"
                                                   size="sm"
+                                                  allowed={can(
+                                                    r.clusterKey,
+                                                    access.patchSubscription(r.namespace),
+                                                  )}
                                                   onClick={() => openMigrate(r)}
                                                 >
                                                   {t('installed_btn_migrate')}
-                                                </Button>
+                                                </GuardedButton>
                                               )}
                                               {showMigrationPending && (
                                                 <span className="pf-v6-u-font-size-sm pf-v6-u-text-color-subtle">
@@ -795,7 +1005,13 @@ const MyCustomPage: React.FC = () => {
         <ModalBody>
           {migrateRow && (
             <>
-              <p>{t('installed_migration_intro')}</p>
+              <p>
+                {isMissingPolicy(migrateRow)
+                  ? t('installed_migration_intro_orphan', {
+                      policy: migrateRow.operatorPolicyManagedDisplay ?? '',
+                    })
+                  : t('installed_migration_intro')}
+              </p>
               <p className="pf-v6-u-font-size-sm pf-v6-u-mt-md">
                 {t('installed_migration_label_key')}{' '}
                 <code className="pf-v6-u-font-family-monospace">

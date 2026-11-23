@@ -2,7 +2,9 @@ import { checkErrors } from '../support';
 
 const PLUGIN_NAME = 'managed-operators-plugin';
 const PLUGIN_PULL_SPEC = Cypress.env('PLUGIN_TEMPLATE_PULL_SPEC');
-const SKIP_DEPLOY = Cypress.env('PLUGIN_ALREADY_DEPLOYED') === 'true';
+// Install / uninstall the chart only when a pull spec was given explicitly (CI). Without one the
+// plugin is assumed to be deployed already, so a local run can never remove it from a cluster.
+const SKIP_DEPLOY = Cypress.env('PLUGIN_ALREADY_DEPLOYED') === 'true' || !PLUGIN_PULL_SPEC;
 
 export const isLocalDevEnvironment = Cypress.config('baseUrl')!.includes('localhost');
 
@@ -46,7 +48,12 @@ const deleteHelmChart = (helmBin: string) => {
 describe('Managed operators plugin', () => {
   before(() => {
     cy.login();
-    cy.get(`[data-test="tour-step-footer-secondary"]`).contains('Skip tour').click();
+    cy.get('[data-test="username"]', { timeout: 60000 }).should('exist');
+    // The welcome tour only shows for users who have not dismissed it yet.
+    cy.get('body').then(($body) => {
+      const skip = $body.find('[data-test="tour-step-footer-secondary"]');
+      if (skip.length) cy.wrap(skip).contains('Skip tour').click();
+    });
     if (SKIP_DEPLOY) {
       // Plugin already deployed on the target cluster (e.g. `PLUGIN_ALREADY_DEPLOYED=true`).
       return;

@@ -37,6 +37,7 @@ import {
 import { SUBSCRIPTION_ENROLL_OPERATOR_POLICY_LABEL } from '../constants/subscriptionMigration';
 import { clusterApiPath } from '../utils/clusterApi';
 import { ensureAutoApproveJob } from '../utils/autoApproveJob';
+import { access, useClusterAccess } from '../utils/clusterAccess';
 import type { OperatorPolicySubscriptionPrefill } from '../utils/installOperatorsPrefill';
 import { OP_POLICY_MANAGED_ANNOTATION } from '../utils/operatorPolicySubscriptionRef';
 
@@ -490,8 +491,20 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
     setPolicyYaml(stringifyYaml(body).trimEnd());
   };
 
+  const { can: canAccess, loading: accessLoading } = useClusterAccess(
+    isOpen && clusterName && !generateOnly
+      ? [{ cluster: clusterName, attrs: access.createClusterRole() }]
+      : [],
+  );
+  const autoApproveRbacDenied =
+    Boolean(clusterName) &&
+    !generateOnly &&
+    !accessLoading &&
+    !canAccess(clusterName, access.createClusterRole());
   const autoApproveAvailable =
-    upgradeApproval === 'Automatic' && versionsText.split(/[\s,]+/).some((v) => v.trim());
+    upgradeApproval === 'Automatic' &&
+    versionsText.split(/[\s,]+/).some((v) => v.trim()) &&
+    !autoApproveRbacDenied;
 
   const submit = async () => {
     if (!clusterName) return;
@@ -1071,9 +1084,11 @@ export const OperatorPolicyFormModal: React.FC<OperatorPolicyFormModalProps> = (
                     placeholder="^my-operator\.v4\.20\..*$"
                   />
                   <FormHelperText>
-                    {autoApproveAvailable
-                      ? t('policy_modal_helper_auto_approve')
-                      : t('policy_modal_helper_auto_approve_unavailable')}{' '}
+                    {autoApproveRbacDenied
+                      ? t('policy_modal_helper_auto_approve_no_rbac')
+                      : autoApproveAvailable
+                        ? t('policy_modal_helper_auto_approve')
+                        : t('policy_modal_helper_auto_approve_unavailable')}{' '}
                     <a
                       href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions/Cheatsheet"
                       target="_blank"

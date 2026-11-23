@@ -19,8 +19,8 @@ export const KUBEADMIN_USERNAME = 'kubeadmin';
 Cypress.Commands.add(
   'login',
   (
-    username: string = KUBEADMIN_USERNAME,
-    password: string = Cypress.env('BRIDGE_KUBEADMIN_PASSWORD'),
+    username: string = Cypress.env('BRIDGE_USERNAME') || KUBEADMIN_USERNAME,
+    password: string = Cypress.env('BRIDGE_PASSWORD') || Cypress.env('BRIDGE_KUBEADMIN_PASSWORD'),
   ) => {
     const baseURL = Cypress.config('baseUrl')!;
 
@@ -41,6 +41,11 @@ Cypress.Commands.add(
 
         cy.visit(baseURL);
 
+        // With several identity providers the console first asks which one to use.
+        const idp = Cypress.env('BRIDGE_IDP');
+        if (idp) {
+          cy.contains('a, button', idp, { timeout: 30000 }).click();
+        }
         cy.get('[data-test-id="login"]').should('be.visible');
         cy.get('#inputUsername').type(username);
         cy.get('#inputPassword').type(password);

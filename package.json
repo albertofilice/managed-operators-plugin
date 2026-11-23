@@ -1,6 +1,6 @@
 {
   "name": "managed-operators-plugin",
-  "version": "0.0.1",
+  "version": "1.1.0",
   "description": "RHACM dynamic console plugin: OLM subscriptions on managed clusters",
   "private": true,
   "license": "Apache-2.0",
@@ -82,7 +82,7 @@
   },
   "consolePlugin": {
     "name": "managed-operators-plugin",
-    "version": "0.0.1",
+    "version": "1.1.0",
     "displayName": "Managed cluster operators (OLM)",
     "description": "OLM Subscriptions per managed cluster: CSV status, approval, and InstallPlan upgrades.",
     "exposedModules": {
@@ -97,6 +97,8 @@
   "packageManager": "yarn@4.13.0",
   "dependencies": {
     "@patternfly/react-charts": "^6.2.2",
+    "@stolostron/multicluster-sdk": "0.10.5",
+    "classnames": "^2.5.1",
     "yaml": "2"
   }
 }

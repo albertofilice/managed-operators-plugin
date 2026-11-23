@@ -15,6 +15,7 @@ export type SubscriptionKind = K8sResourceCommon & {
     source?: string;
     sourceNamespace?: string;
     installPlanApproval?: 'Automatic' | 'Manual';
+    startingCSV?: string;
   };
   status?: {
     currentCSV?: string;
