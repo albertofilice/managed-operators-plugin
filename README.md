@@ -157,7 +157,7 @@ yarn install --immutable
   yarn test-unit
   ```
 
-- **End-to-end (Cypress)** — needs a reachable console and `BRIDGE_BASE_ADDRESS` / `BRIDGE_KUBEADMIN_PASSWORD`. By default the spec installs the Helm chart first; to test a plugin that is already deployed, use `yarn test-cypress-deployed` (sets `PLUGIN_ALREADY_DEPLOYED=true`):
+- **End-to-end (Cypress)** — needs a reachable console and `BRIDGE_BASE_ADDRESS` plus either `BRIDGE_KUBEADMIN_PASSWORD` or, for another user (e.g. htpasswd), `BRIDGE_USERNAME` / `BRIDGE_PASSWORD` and optionally `BRIDGE_IDP` (the identity provider name shown on the login page). The user needs read access to the ACM perspective; a cluster-admin is not required for these checks, but the Helm install path of the spec is (use `yarn test-cypress-deployed`). By default the spec installs the Helm chart first; to test a plugin that is already deployed, use `yarn test-cypress-deployed` (sets `PLUGIN_ALREADY_DEPLOYED=true`):
 
   ```bash
   yarn test-cypress
