@@ -12,7 +12,11 @@ const QUERY = `query searchResult($input: [SearchInput]) {
   searchResult: search(input: $input) { count items }
 }`;
 
-const defaultPoster: SearchPoster = (url, body) => consoleFetchJSON.post(url, body);
+/** A hung Search backend must not keep the page loading: fail fast so callers fall back to the proxy. */
+export const SEARCH_TIMEOUT_MS = 20_000;
+
+const defaultPoster: SearchPoster = (url, body) =>
+  consoleFetchJSON.post(url, body, undefined, SEARCH_TIMEOUT_MS);
 
 /** Runs one Search query. Any HTTP or GraphQL error rejects, so callers can fall back. */
 export async function searchItems(
