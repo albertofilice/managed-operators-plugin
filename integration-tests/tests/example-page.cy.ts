@@ -2,7 +2,9 @@ import { checkErrors } from '../support';
 
 const PLUGIN_NAME = 'managed-operators-plugin';
 const PLUGIN_PULL_SPEC = Cypress.env('PLUGIN_TEMPLATE_PULL_SPEC');
-const SKIP_DEPLOY = Cypress.env('PLUGIN_ALREADY_DEPLOYED') === 'true';
+// Install / uninstall the chart only when a pull spec was given explicitly (CI). Without one the
+// plugin is assumed to be deployed already, so a local run can never remove it from a cluster.
+const SKIP_DEPLOY = Cypress.env('PLUGIN_ALREADY_DEPLOYED') === 'true' || !PLUGIN_PULL_SPEC;
 
 export const isLocalDevEnvironment = Cypress.config('baseUrl')!.includes('localhost');
 

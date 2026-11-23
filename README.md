@@ -157,7 +157,7 @@ yarn install --immutable
   yarn test-unit
   ```
 
-- **End-to-end (Cypress)** — **Warning:** `yarn test-cypress` and `yarn test-cypress-headless` install the Helm chart first and, when the run ends, run `helm uninstall` and delete the `managed-operators-plugin` namespace. On a cluster where the plugin is already deployed, use `yarn test-cypress-deployed` (headless) and never the other two. needs a reachable console and `BRIDGE_BASE_ADDRESS` plus either `BRIDGE_KUBEADMIN_PASSWORD` or, for another user (e.g. htpasswd), `BRIDGE_USERNAME` / `BRIDGE_PASSWORD` and optionally `BRIDGE_IDP` (the identity provider name shown on the login page). The user needs read access to the ACM perspective; a cluster-admin is not required for these checks, but the Helm install path of the spec is (use `yarn test-cypress-deployed`). By default the spec installs the Helm chart first; to test a plugin that is already deployed, use `yarn test-cypress-deployed` (sets `PLUGIN_ALREADY_DEPLOYED=true`):
+- **End-to-end (Cypress)** — needs a reachable console and `BRIDGE_BASE_ADDRESS` plus either `BRIDGE_KUBEADMIN_PASSWORD` or, for another user (e.g. htpasswd), `BRIDGE_USERNAME` / `BRIDGE_PASSWORD` and optionally `BRIDGE_IDP` (the identity provider name on the login page). The spec installs and later uninstalls the Helm chart **only** when `CYPRESS_PLUGIN_TEMPLATE_PULL_SPEC` is set (CI); otherwise it assumes the plugin is already deployed and never touches it. `yarn test-cypress-deployed` forces that mode.
 
   ```bash
   yarn test-cypress
