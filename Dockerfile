@@ -13,6 +13,13 @@ RUN yarn install --immutable && yarn build
 
 FROM --platform=linux/amd64 registry.access.redhat.com/ubi9/nginx-120:latest
 
+# The base image is rebuilt only now and then: pull in the errata published since, and drop
+# packages a static file server never uses (fewer packages, fewer CVEs to report).
+USER root
+RUN dnf -y update && \
+    dnf -y remove vim-minimal rsync emacs-filesystem && \
+    dnf clean all && rm -rf /var/cache/dnf /var/log/dnf* /var/log/hawkey.log
+
 COPY --from=build /usr/src/app/dist /usr/share/nginx/html
 USER 1001
 
