@@ -46,7 +46,12 @@ const deleteHelmChart = (helmBin: string) => {
 describe('Managed operators plugin', () => {
   before(() => {
     cy.login();
-    cy.get(`[data-test="tour-step-footer-secondary"]`).contains('Skip tour').click();
+    cy.get('[data-test="username"]', { timeout: 60000 }).should('exist');
+    // The welcome tour only shows for users who have not dismissed it yet.
+    cy.get('body').then(($body) => {
+      const skip = $body.find('[data-test="tour-step-footer-secondary"]');
+      if (skip.length) cy.wrap(skip).contains('Skip tour').click();
+    });
     if (SKIP_DEPLOY) {
       // Plugin already deployed on the target cluster (e.g. `PLUGIN_ALREADY_DEPLOYED=true`).
       return;
