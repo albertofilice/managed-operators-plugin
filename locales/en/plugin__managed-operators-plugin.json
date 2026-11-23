@@ -274,5 +274,6 @@
   "installed_search_clear": "Clear search",
   "export_csv": "Export CSV",
   "installed_policy_missing_label": "Policy not found",
-  "installed_policy_missing_title": "This subscription still names an OperatorPolicy that does not exist on the cluster (deleted, or its removal behaviour kept the subscription). Nothing governs it any more."
+  "installed_policy_missing_title": "This subscription still names an OperatorPolicy that does not exist on the cluster (deleted, or its removal behaviour kept the subscription). Nothing governs it any more.",
+  "installed_migration_intro_orphan": "This subscription still names the OperatorPolicy {{policy}}, but that policy no longer exists on the cluster, so nothing governs it. To put it under governance again, add the opt-in label below. Then create a matching OperatorPolicy (the Install operators page opens with the form filled in from this subscription)."
 }

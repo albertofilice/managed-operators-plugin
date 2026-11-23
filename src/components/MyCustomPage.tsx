@@ -1005,7 +1005,13 @@ const MyCustomPage: React.FC = () => {
         <ModalBody>
           {migrateRow && (
             <>
-              <p>{t('installed_migration_intro')}</p>
+              <p>
+                {isMissingPolicy(migrateRow)
+                  ? t('installed_migration_intro_orphan', {
+                      policy: migrateRow.operatorPolicyManagedDisplay ?? '',
+                    })
+                  : t('installed_migration_intro')}
+              </p>
               <p className="pf-v6-u-font-size-sm pf-v6-u-mt-md">
                 {t('installed_migration_label_key')}{' '}
                 <code className="pf-v6-u-font-family-monospace">
